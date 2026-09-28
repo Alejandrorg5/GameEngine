@@ -1,8 +1,7 @@
 #include <glad/glad.h>
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+
 
 int main(int argc, char* argv[]) {
 	if (!SDL_Init(SDL_INIT_VIDEO))
@@ -29,7 +28,6 @@ int main(int argc, char* argv[]) {
 #ifdef WINDOW_RESIZEABLE
 	flags |= SDL_WINDOW_RESIZABLE;
 #endif
-	
 	unsigned int wWidth = 1280;
 	unsigned int wHeight = 720;
 	SDL_Window* wdn = SDL_CreateWindow("Engine", wWidth, wHeight, flags);
@@ -46,38 +44,26 @@ int main(int argc, char* argv[]) {
 
 	glViewport(0, 0, wWidth, wHeight);
 	glClearColor(0.1f, 0.25f, 0.5f, 1.0f);
-	//1. 2.
-	//float v[] = { -0.5f, -0.5f, 0.0f, 0.5f, -0.5f, 0.0f, 0.0f, 0.5f, 0.0f };
-	//float c[] = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
-	//GLuint buffs[2];
-	//glGenBuffers(2, buffs);
-	//glBindBuffer(GL_ARRAY_BUFFER, buffs[0]);
-	//glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STATIC_DRAW);
-	//glBindBuffer(GL_ARRAY_BUFFER, buffs[1]);
-	//glBufferData(GL_ARRAY_BUFFER, sizeof(c), c, GL_STATIC_DRAW);
 
-	//3.
-	/* x, y, z, r, g, b*/
-	float vertices[] = {
-		//First triangle
-		-0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f,
-		0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f,
-		-0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f,
-
-		//Second Triangle
-		-0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f,
-		0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f,
-		0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f
-	};
-	
-	GLuint vBuff;
-	glGenBuffers(1, &vBuff);
-	glBindBuffer(GL_ARRAY_BUFFER, vBuff);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+	float qVertices[] = {
+	-0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f,
+	0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f,
+	-0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f,
+	//-0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f,//repetido
+	//0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f,//repetido
+	0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f };
+	GLuint qVBuff;
+	glGenBuffers(1, &qVBuff);
+	glBindBuffer(GL_ARRAY_BUFFER, qVBuff);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(qVertices), qVertices, GL_STATIC_DRAW);
 
 	unsigned int indices[] = {
 		0,1,2,2,1,3
 	};
+	GLuint iBuff;
+	glGenBuffers(1, &iBuff);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iBuff);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
 	bool running = true;
 	while (running)
@@ -96,38 +82,13 @@ int main(int argc, char* argv[]) {
 		}
 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		//0.glBegin(GL_TRIANGLES);
-		//0.glVertex3f(-0.5f, -0.5f, 0.0f);
-		//0.//glVertex3fv(v);
-		//0.glColor3f(1.0f, 0.0f, 0.0f);
-		//0.//glColor3fv(c);
-		//0.glVertex3f(0.5f, -0.5f, 0.0f);
-		//0.//glVertex3fv(&v[3]);
-		//0.glColor3f(0.0f, 1.0f, 0.0f);
-		//0.//glColor3fv(&c[3]);
-		//0.glVertex3f(0.0f, 0.5f, 0.0f);
-		//0.//glVertex3fv(&v[6]);
-		//0.glColor3f(0.0f, 0.0f, 1.0f);
-		//0.//glColor3fv(&c[6]);
-		//0.glEnd();
-		//1. 2. 3.
 		glEnableClientState(GL_VERTEX_ARRAY);
 		glEnableClientState(GL_COLOR_ARRAY);
-		//1. glVertexPointer(3, GL_FLOAT, 0, v);
-		//1. glColorPointer(3, GL_FLOAT, 0, c);
-		//2. glBindBuffer(GL_ARRAY_BUFFER, buffs[0]);
-		//2. glVertexPointer(3, GL_FLOAT, 0, NULL);
-		//glBindBuffer(GL_ARRAY_BUFFER, indices[1]);
-		//2. glColorPointer(3, GL_FLOAT, 0, NULL);
-
-		//3.
-		glBindBuffer(GL_ARRAY_BUFFER, vBuff);
+		glBindBuffer(GL_ARRAY_BUFFER, qVBuff);
 		glVertexPointer(3, GL_FLOAT, sizeof(float) * 6, NULL);
 		glColorPointer(3, GL_FLOAT, sizeof(float) * 6, reinterpret_cast<void*>(sizeof(float) * 3));
-
-		//1. 2. 3.
-		glDrawArrays(GL_TRIANGLES, 0, 6);
-		//glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(unsigned int), GL_UNSIGNED_INT, NULL);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iBuff);
+		glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(unsigned int), GL_UNSIGNED_INT, NULL);
 
 		SDL_GL_SwapWindow(wdn);
 	}
