@@ -1,0 +1,5 @@
+- Separar el main en ficheros distintos
+
+ integrar el IMGUI
+ Remplazar la textura amarilla por una de verdad
+ Cargar el Warrior fbx del atenea

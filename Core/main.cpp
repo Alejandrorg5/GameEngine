@@ -2,8 +2,44 @@
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL.h>
 
+unsigned int wWidth = 1280;
+unsigned int wHeight = 720;
+SDL_Window* wdn;
 
-int main(int argc, char* argv[]) {
+struct RGB {
+	float r;
+	float g;
+	float b;
+	void operator=(const RGB& other) {
+		r = other.r;
+		g = other.g;
+		b = other.b;
+	}
+};
+
+struct Point2D {
+	float x;
+	float y;
+
+	void operator=(const Point2D& other) {
+		x = other.x;
+		y = other.y;
+	}
+};
+
+struct Point3D {
+	float x;
+	float y;
+	float z;
+
+	void operator=(const Point3D& other) {
+		x = other.x;
+		y = other.y;
+		z = other.z;
+	}
+};
+
+int Init() {
 	if (!SDL_Init(SDL_INIT_VIDEO))
 		return -1;
 
@@ -28,9 +64,9 @@ int main(int argc, char* argv[]) {
 #ifdef WINDOW_RESIZEABLE
 	flags |= SDL_WINDOW_RESIZABLE;
 #endif
-	unsigned int wWidth = 1280;
-	unsigned int wHeight = 720;
-	SDL_Window* wdn = SDL_CreateWindow("Engine", wWidth, wHeight, flags);
+
+	
+	wdn = SDL_CreateWindow("Engine", wWidth, wHeight, flags);
 
 	if (wdn == nullptr)
 		return -1;
@@ -42,16 +78,53 @@ int main(int argc, char* argv[]) {
 	if (gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress)) == 0)
 		return -1;
 
+}
+
+RGB* GenerateChecker(int width, int height) {
+	RGB* checkerTexels = new RGB[width * height];
+	for (int i = 0; i < height; ++i) {
+		for (int j = 0; j < width; ++j) {
+			float c = ((((i & 0x8) == 0) ^ (((j & 0x8)) == 0))) * 255;
+			checkerTexels[width * i + j] = { c, c, c };
+		}
+
+	}
+	return checkerTexels;
+}
+
+void CreateQuad(){}
+
+
+int main(int argc, char* argv[]) {
+	
+
+	Init();
+
+	static constexpr unsigned int tWidth = 512;
+	static constexpr unsigned int tHeight = 256;
+
+	
+	RGB* checkerTexels = GenerateChecker(tWidth, tHeight);
+	
+	GLuint tex;
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, tWidth, tHeight, 0, GL_RGB, GL_FLOAT, checkerTexels);
+	delete[] checkerTexels;
+
 	glViewport(0, 0, wWidth, wHeight);
 	glClearColor(0.1f, 0.25f, 0.5f, 1.0f);
 
 	float qVertices[] = {
-	-0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f,
-	0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f,
-	-0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f,
-	//-0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f,//repetido
-	//0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f,//repetido
-	0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f };
+	-0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+	0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
+	-0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
+	0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f };
+
 	GLuint qVBuff;
 	glGenBuffers(1, &qVBuff);
 	glBindBuffer(GL_ARRAY_BUFFER, qVBuff);
@@ -60,6 +133,7 @@ int main(int argc, char* argv[]) {
 	unsigned int indices[] = {
 		0,1,2,2,1,3
 	};
+
 	GLuint iBuff;
 	glGenBuffers(1, &iBuff);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iBuff);
@@ -84,10 +158,20 @@ int main(int argc, char* argv[]) {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glEnableClientState(GL_VERTEX_ARRAY);
 		glEnableClientState(GL_COLOR_ARRAY);
+		glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 		glBindBuffer(GL_ARRAY_BUFFER, qVBuff);
-		glVertexPointer(3, GL_FLOAT, sizeof(float) * 6, NULL);
-		glColorPointer(3, GL_FLOAT, sizeof(float) * 6, reinterpret_cast<void*>(sizeof(float) * 3));
+
+		glVertexPointer(3, GL_FLOAT, sizeof(float) * 8, reinterpret_cast<void*>(0));
+		glColorPointer(3, GL_FLOAT, sizeof(float) * 8, reinterpret_cast<void*>(sizeof(float) * 3));
+		glTexCoordPointer(2, GL_FLOAT, sizeof(float) * 8, reinterpret_cast<void*>(sizeof(float) * 6));
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iBuff);
+
+		//OpenGL compatibility
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, tex);
+
+		//OpenGL compatibility - como juntar el color de los vertices y de las texturas
+		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 		glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(unsigned int), GL_UNSIGNED_INT, NULL);
 
 		SDL_GL_SwapWindow(wdn);
