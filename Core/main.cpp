@@ -1,180 +1,84 @@
-#include <glad/glad.h>
-#include <SDL3/SDL_main.h>
-#include <SDL3/SDL.h>
-
-unsigned int wWidth = 1280;
-unsigned int wHeight = 720;
-SDL_Window* wdn;
-
-struct RGB {
-	float r;
-	float g;
-	float b;
-	void operator=(const RGB& other) {
-		r = other.r;
-		g = other.g;
-		b = other.b;
-	}
-};
-
-struct Point2D {
-	float x;
-	float y;
-
-	void operator=(const Point2D& other) {
-		x = other.x;
-		y = other.y;
-	}
-};
-
-struct Point3D {
-	float x;
-	float y;
-	float z;
-
-	void operator=(const Point3D& other) {
-		x = other.x;
-		y = other.y;
-		z = other.z;
-	}
-};
-
-int Init() {
-	if (!SDL_Init(SDL_INIT_VIDEO))
-		return -1;
-
-	//Opengl attributes required to know before we create the window
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4); // desired version
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
-
-	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1); // we want a double buffer (it is the default)
-	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24); // we want to have a depth buffer with minimum 24 bits
-	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8); // we want to have a stencil buffer with minimum 8 bits
-
-	Uint32 flags = SDL_WINDOW_OPENGL;
-
-	//window start params
-	//#define WINDOW_FULLSCREEN
-#define WINDOW_RESIZEABLE
-
-#ifdef WINDOW_FULLSCREEN
-	flags |= SDL_WINDOW_FULLSCREEN;
-#endif
-#ifdef WINDOW_RESIZEABLE
-	flags |= SDL_WINDOW_RESIZABLE;
-#endif
-
-	
-	wdn = SDL_CreateWindow("Engine", wWidth, wHeight, flags);
-
-	if (wdn == nullptr)
-		return -1;
-
-	SDL_GLContext ctx = SDL_GL_CreateContext(wdn);
-	if (!ctx)
-		return -1;
-
-	if (gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress)) == 0)
-		return -1;
-
-}
-
-RGB* GenerateChecker(int width, int height) {
-	RGB* checkerTexels = new RGB[width * height];
-	for (int i = 0; i < height; ++i) {
-		for (int j = 0; j < width; ++j) {
-			float c = ((((i & 0x8) == 0) ^ (((j & 0x8)) == 0))) * 255;
-			checkerTexels[width * i + j] = { c, c, c };
-		}
-
-	}
-	return checkerTexels;
-}
-
-void CreateQuad(){}
+#include <iostream>
+#include "../Modules/Engine.h"
+#include "../Modules/Log.h"
 
 
 int main(int argc, char* argv[]) {
-	
 
-	Init();
+	LOG("Engine starting ...");
 
-	static constexpr unsigned int tWidth = 512;
-	static constexpr unsigned int tHeight = 256;
+	//Initializes the engine state
+	Engine::EngineState state = Engine::EngineState::CREATE;
+	int result = EXIT_FAILURE;
 
-	
-	RGB* checkerTexels = GenerateChecker(tWidth, tHeight);
-	
-	GLuint tex;
-	glGenTextures(1, &tex);
-	glBindTexture(GL_TEXTURE_2D, tex);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, tWidth, tHeight, 0, GL_RGB, GL_FLOAT, checkerTexels);
-	delete[] checkerTexels;
-
-	glViewport(0, 0, wWidth, wHeight);
-	glClearColor(0.1f, 0.25f, 0.5f, 1.0f);
-
-	float qVertices[] = {
-	-0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-	0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
-	-0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
-	0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f };
-
-	GLuint qVBuff;
-	glGenBuffers(1, &qVBuff);
-	glBindBuffer(GL_ARRAY_BUFFER, qVBuff);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(qVertices), qVertices, GL_STATIC_DRAW);
-
-	unsigned int indices[] = {
-		0,1,2,2,1,3
-	};
-
-	GLuint iBuff;
-	glGenBuffers(1, &iBuff);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iBuff);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-	bool running = true;
-	while (running)
+	while (state != Engine::EngineState::EXIT)
 	{
-		SDL_Event e;
-		while (SDL_PollEvent(&e))
+		switch (state)
 		{
-			if (e.type == SDL_EVENT_QUIT)
-				running = false;
-			else if (e.type == SDL_EVENT_WINDOW_RESIZED)
+			// Allocate the engine --------------------------------------------
+		case Engine::EngineState::CREATE:
+			LOG("CREATION PHASE ===============================");
+			state = Engine::EngineState::AWAKE;
+
+			break;
+
+			// Awake all modules -----------------------------------------------
+		case Engine::EngineState::AWAKE:
+			LOG("AWAKE PHASE ===============================");
+			if (Engine::GetInstance().Awake() == true)
+				state = Engine::EngineState::START;
+			else
 			{
-				wWidth = e.window.data1;
-				wHeight = e.window.data2;
-				glViewport(0, 0, wWidth, wHeight);
+				LOG("ERROR: Awake failed");
+				state = Engine::EngineState::FAIL;
 			}
+
+			break;
+
+			// Call all modules before first frame  ----------------------------
+		case Engine::EngineState::START:
+			LOG("START PHASE ===============================");
+			if (Engine::GetInstance().Start() == true)
+			{
+				state = Engine::EngineState::LOOP;
+				LOG("UPDATE PHASE ===============================");
+			}
+			else
+			{
+				state = Engine::EngineState::FAIL;
+				LOG("ERROR: Start failed");
+			}
+			break;
+
+			// Loop all modules until we are asked to leave ---------------------
+		case Engine::EngineState::LOOP:
+			if (Engine::GetInstance().Update() == false)
+				state = Engine::EngineState::CLEAN;
+			break;
+
+			// Cleanup allocated memory -----------------------------------------
+		case Engine::EngineState::CLEAN:
+			LOG("CLEANUP PHASE ===============================");
+			if (Engine::GetInstance().CleanUp() == true)
+			{
+				result = EXIT_SUCCESS;
+				state = Engine::EngineState::EXIT;
+			}
+			else
+				state = Engine::EngineState::FAIL;
+
+			break;
+
+			// Exit with errors and shame ---------------------------------------
+		case Engine::EngineState::FAIL:
+			LOG("Exiting with errors");
+			result = EXIT_FAILURE;
+			state = Engine::EngineState::EXIT;
+			break;
 		}
-
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glEnableClientState(GL_VERTEX_ARRAY);
-		glEnableClientState(GL_COLOR_ARRAY);
-		glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-		glBindBuffer(GL_ARRAY_BUFFER, qVBuff);
-
-		glVertexPointer(3, GL_FLOAT, sizeof(float) * 8, reinterpret_cast<void*>(0));
-		glColorPointer(3, GL_FLOAT, sizeof(float) * 8, reinterpret_cast<void*>(sizeof(float) * 3));
-		glTexCoordPointer(2, GL_FLOAT, sizeof(float) * 8, reinterpret_cast<void*>(sizeof(float) * 6));
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iBuff);
-
-		//OpenGL compatibility
-		glEnable(GL_TEXTURE_2D);
-		glBindTexture(GL_TEXTURE_2D, tex);
-
-		//OpenGL compatibility - como juntar el color de los vertices y de las texturas
-		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-		glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(unsigned int), GL_UNSIGNED_INT, NULL);
-
-		SDL_GL_SwapWindow(wdn);
 	}
-	return 0;
+
+	LOG("Closing Engine ===============================");
+
+	return result;
 }

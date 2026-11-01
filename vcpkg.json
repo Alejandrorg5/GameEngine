@@ -1,8 +1,17 @@
 {
   "dependencies": [
+    "assimp",
+    "devil",
     "glad",
     "glm",
+    {
+      "name": "imgui",
+      "features": [
+        "opengl3-binding",
+        "sdl3-binding"
+      ]
+    },
     "sdl3",
-    "devil"
+    "pugixml"
   ]
 }

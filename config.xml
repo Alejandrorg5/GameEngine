@@ -1,0 +1,19 @@
+<!-- Config file for the engine -->
+<config>
+  <engine>
+    <title>Game Engine</title>
+    <targetFrameRate value="240"/>
+  </engine>
+
+  <render>
+    <vsync value="false"/>
+  </render>
+
+  <window>
+    <resolution width="1920" height="1080" scale="1"/>
+    <fullscreen value="false"/>
+    <borderless value="false"/>
+    <resizable value="true"/>
+    <fullscreen_window value="false"/>
+  </window>
+</config>
