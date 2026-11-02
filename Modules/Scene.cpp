@@ -45,24 +45,29 @@ void Scene::Init_ImGui() {
 void Scene::DrawGameObjectNode(GameObject* obj) {
 	if (!obj) return;
 
-	// Flags útiles para ImGui (puedes añadir ImGuiTreeNodeFlags_Leaf si no tiene hijos)
 	ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
 
-	// Si el objeto no tiene hijos, podemos marcarlo como hoja para que no muestre la flecha de desplegar
+	if (selectedObject == obj) {
+		flags |= ImGuiTreeNodeFlags_Selected;
+	}
+
+	// Si el objeto no tiene hijos no muestrar la flecha
 	if (obj->GetChildren().empty()) {
 		flags |= ImGuiTreeNodeFlags_Leaf;
 	}
 
-	// Renderizamos el nodo con el nombre del GameObject (usamos un puntero o ID único combinando la dirección de memoria para evitar conflictos si hay nombres repetidos)
 	std::string label = obj->name + "##" + std::to_string(reinterpret_cast<uintptr_t>(obj));
 	bool nodeOpen = ImGui::TreeNodeEx(label.c_str(), flags);
 
-	// Si el nodo está abierto, recorremos recursivamente a sus hijos
+	if (ImGui::IsItemClicked()) {
+		selectedObject = obj;
+	}
+
+	// Si el nodo está abierto, recorremos sus hijos
 	if (nodeOpen) {
 		for (const auto& child : obj->GetChildren()) {
-			DrawGameObjectNode(child.get()); // Llamada recursiva para cada hijo
+			DrawGameObjectNode(child.get()); 
 		}
-
 		ImGui::TreePop();
 	}
 }
@@ -72,17 +77,71 @@ void Scene::Show_ImGui(float dt) {
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui::NewFrame();
 
-	ImGui::ShowDemoWindow();
+	//ImGui::ShowDemoWindow();
 
-	ImGui::Begin("Engine Control Panel");
+	ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+	//Para dejar las ventanas fijas
+	ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse;
+
+	/* Lista de objetos */
+	int list_width = 300;
+
+	ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x, viewport->WorkPos.y), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(list_width, viewport->WorkSize.y), ImGuiCond_Always);
+
+	ImGui::Begin("Engine Control Panel", nullptr, windowFlags);
 	ImGui::Text("FPS: %.1f", 1.0f / dt);
 	ImGui::Separator();
-
 	for (const auto& obj : game_objects) {
 		DrawGameObjectNode(obj);
 	}
+	ImGui::End();
+
+	/* Inspector */
+	int inspectorWidth = 400;
+	float inspectorPosX = viewport->WorkPos.x + viewport->WorkSize.x - inspectorWidth;
+
+	ImGui::SetNextWindowPos(ImVec2(inspectorPosX, viewport->WorkPos.y), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(inspectorWidth, viewport->WorkSize.y), ImGuiCond_Always);
+
+	ImGui::Begin("Inspector", nullptr, windowFlags);
+	if (selectedObject != nullptr) {
+		// Mostrar y editar el nombre del GameObject
+		char nameBuffer[128];
+		strcpy_s(nameBuffer, sizeof(nameBuffer), selectedObject->name.c_str());
+		if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
+			selectedObject->name = nameBuffer;
+		}
+
+		ImGui::Separator();
+
+		// Transform
+		if (selectedObject->GetComponent<TransformComponent>() != nullptr) {
+			if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+				ImGui::DragFloat3("Position", &selectedObject->GetComponent<TransformComponent>()->position.x, 0.1f);
+				ImGui::DragFloat3("Rotation", &selectedObject->GetComponent<TransformComponent>()->rotation.x, 0.5f);
+				ImGui::DragFloat3("Scale", &selectedObject->GetComponent<TransformComponent>()->scale.x, 0.05f);
+			}
+		}
+
+		
+		TextureComponent* texComp = selectedObject->GetComponent<TextureComponent>();
+		if (texComp != nullptr) {
+			if (ImGui::CollapsingHeader("Texture", ImGuiTreeNodeFlags_DefaultOpen)) {
+				ImGui::Text("Texture ID: %d", texComp->textureID);
+				ImGui::Text("Path: %s", texComp->filePath.c_str());
+			}
+		}
+
+	}
+	else {
+		ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "No GameObject selected.");
+	}
 
 	ImGui::End();
+
+
 
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

@@ -1,9 +1,21 @@
 #include "MeshComponent.h"
 #include "../GameObject.h"
+#include <glm/gtc/type_ptr.hpp>
 
 void MeshComponent::Render() {
     GLuint currentTextureID = 0;
 
+    /* Posicion */
+    glPushMatrix();
+
+    if (owner->GetComponent<TextureComponent>() != nullptr) {
+        glm::mat4 modelMatrix = owner->GetComponent<TransformComponent>()->GetModelMatrix();
+        // Multiplicamos la matriz del modelo actual en la pila de OpenGL
+        glMultMatrixf(glm::value_ptr(modelMatrix));
+    }
+
+
+    /* Textura */
     if (owner != nullptr) {
         TextureComponent* texComp = owner->GetComponent<TextureComponent>();
         if (texComp != nullptr) {
@@ -28,6 +40,8 @@ void MeshComponent::Render() {
     }
 
     glDisable(GL_TEXTURE_2D);
+
+
 }
 
 void MeshComponent::Update(float deltaTime) {

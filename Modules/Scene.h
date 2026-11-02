@@ -73,7 +73,6 @@ public:
 
 	aiLogStream stream;
 private:
-	
 	int wWidth, wHeight;
 	Uint64 lastTime;
 	GLuint cVBuff;
@@ -81,4 +80,5 @@ private:
 	GLuint tex;
 	Grid sceneGrid;
 	Camera editorCamera;
+	GameObject* selectedObject = nullptr;
 };
