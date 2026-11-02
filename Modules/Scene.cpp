@@ -182,15 +182,11 @@ bool Scene::Start()
 	GameObject* model = root.AddChild("Model1");
 	
 	MeshComponent* mesh = model->GetComponent<MeshComponent>();
-	ModelLoader::LoadFBXIntoRenderer("../Assets/Models/BakerHouse.fbx", mesh);
-	
-	TextureComponent* texture = model->AddComponent<TextureComponent>();
-	GLuint customTexture = TextureLoader::LoadTexture("../Assets/Models/Baker_House.png");
-	texture->SetTexture(customTexture, "Assets/Models/Baker_House.png");
+	//ModelLoader::LoadFBXIntoRenderer("../Assets/Models/BakerHouse.fbx", mesh, "../Assets/Models/Baker_House.png");
+	ModelLoader::LoadFBXIntoRenderer("../Assets/Models/pirate-ship-light.fbx", mesh, "");
 	
 
-	mesh->SetTexture(customTexture);
-
+	
 	game_objects.push_back(&root);
 
 

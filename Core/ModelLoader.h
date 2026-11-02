@@ -4,10 +4,10 @@
 #include "Mesh.h"
 #include <iostream>
 #include "Components/MeshComponent.h"
-
+#include "../Core/TextureLoader.h"
 class ModelLoader {
 public:
-    static void LoadFBXIntoRenderer(const std::string& path, MeshComponent* renderer) {
+    static void LoadFBXIntoRenderer(const std::string& path, MeshComponent* renderer, string texturepath) {
         Assimp::Importer importer;
         const aiScene* scene = importer.ReadFile(path,
             aiProcess_Triangulate |
@@ -20,13 +20,48 @@ public:
             return;
         }
 
-        // Limpiamos mallas anteriores si las hubiera
         renderer->meshes.clear();
 
-        // ¡Bucle clave! Recorremos todas las mallas de la escena de Assimp
         for (unsigned int i = 0; i < scene->mNumMeshes; i++) {
             aiMesh* aiMeshPtr = scene->mMeshes[i];
             Mesh mesh = ProcessMesh(aiMeshPtr);
+
+            if (aiMeshPtr->mMaterialIndex >= 0) {
+                aiMaterial* material = scene->mMaterials[aiMeshPtr->mMaterialIndex];
+                aiString texPath;
+
+                if (material->GetTexture(aiTextureType_DIFFUSE, 0, &texPath) == AI_SUCCESS) {
+                    std::string pathStr = texPath.C_Str();
+                    std::replace(pathStr.begin(), pathStr.end(), '\\', '/');
+
+                    // CASO A: La textura está INCRUSTADA en el FBX (empieza por '*')
+                    if (pathStr[0] == '*') {
+                        const aiTexture* embeddedTexture = scene->GetEmbeddedTexture(pathStr.c_str());
+                        if (embeddedTexture) {
+                            GLuint texID = TextureLoader::LoadEmbeddedTexture(embeddedTexture);
+                            if (texID != 0) {
+                                mesh.textureID = texID;
+                            }
+                        }
+                    }
+                    // CASO B: La textura es un archivo externo en una carpeta
+                    else {
+                        if (!texturepath.empty()) {
+                            GLuint texID = TextureLoader::LoadTexture(texturepath);
+                            if (texID != 0) {
+                                mesh.textureID = texID;
+                            }
+                        }
+                        else {
+                            texturepath = "../Assets/Models/" + pathStr;
+                            GLuint texID = TextureLoader::LoadTexture(texturepath);
+                            if (texID != 0) {
+                                mesh.textureID = texID;
+                            }
+                        }
+                    }
+                }
+            }
             renderer->meshes.push_back(mesh);
         }
     }
