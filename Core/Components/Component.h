@@ -17,6 +17,7 @@ public:
 	GameObject* owner = nullptr;
 	
 	Component() : active(false) {}
+	virtual ~Component() = default;
 
 	virtual void Enable() {};
 	virtual void Disable() {};

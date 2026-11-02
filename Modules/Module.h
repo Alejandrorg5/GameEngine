@@ -6,6 +6,7 @@
 class Module
 {
 public:
+    virtual ~Module() = default;
 
 	Module() : active(false)
 	{

@@ -1,6 +1,8 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <chrono>
+#include <filesystem>
 
 #include "Engine.h"
 #include "Window.h"
@@ -67,7 +69,7 @@ bool Engine::Awake() {
     LOG("Engine::Awake");
 
     //L05 TODO 2: Add the LoadConfig() method here
-    LoadConfig();
+    if (!LoadConfig()) return false;
     // L05: TODO 3: Read the title from the config file and set the variable gameTitle, read targetFrameRate and set the variables
     gameTitle = configFile.child("config").child("engine").child("title").child_value();
     targetFrameRate = configFile.child("config").child("engine").child("targetFrameRate").attribute("value").as_int();
@@ -108,7 +110,7 @@ bool Engine::Start() {
     }
 
     // L2: TODO 3: Log the result of the timer
-    LOG("Timer App CleanUp(): %f", timer.ReadMSec());
+    LOG("Engine Start: %.2f ms", timer.ReadMSec());
 
     return result;
 }
@@ -139,21 +141,18 @@ bool Engine::Update() {
 bool Engine::CleanUp() {
 
     // L2: TODO 3: Measure the amount of ms that takes to execute the Start() and LOG the result
-    Timer timer = Timer();
+    const auto cleanupStart = std::chrono::steady_clock::now();
 
     LOG("Engine::CleanUp");
 
     //Iterates the module list and calls CleanUp on each module
     bool result = true;
-    for (const auto& module : moduleList) {
-        result = module->CleanUp();
-        if (!result) {
-            break;
-        }
+    for (auto it = moduleList.rbegin(); it != moduleList.rend(); ++it) {
+        result = (*it)->CleanUp() && result;
     }
 
     // L2: TODO 3: Log the result of the timer
-    LOG("Timer App CleanUp(): %f", timer.ReadMSec());
+    LOG("Engine cleanup: %.2f ms", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - cleanupStart).count());
 
     return result;
 }
@@ -169,15 +168,10 @@ void Engine::FinishUpdate()
 {
     // L03: TODO 1: Cap the framerate of the gameloop
     double currentDt = frameTime.ReadMs();
-    float maxFrameDuration = 1000.0f / targetFrameRate;
+    float maxFrameDuration = targetFrameRate > 0 ? 1000.0f / targetFrameRate : 0.0f;
     if (targetFrameRate > 0 && currentDt < maxFrameDuration) {
-        Uint32 delay = (Uint32)(maxFrameDuration - currentDt);
-
-        // L03: TODO 2: Measure accurately the amount of time SDL_Delay() actually waits compared to what was expected
-        PerfTimer delayTimer = PerfTimer();
-        SDL_Delay(delay);
-        //Measure accurately the amount of time SDL_Delay() actually waits compared to what was expected
-        //LOG("We waited for %I32u ms and got back in %f ms",delay,delayTimer.ReadMs()); // Uncomment this line to see the results
+        const auto delay = static_cast<Uint64>((maxFrameDuration - currentDt) * 1000000.0);
+        SDL_DelayPrecise(delay);
     }
 
     // L2: TODO 4: Calculate:
@@ -272,7 +266,7 @@ bool Engine::LoadConfig()
     // else, log the error
     // check https://pugixml.org/docs/quickstart.html#loading
 
-    pugi::xml_parse_result result = configFile.load_file("../config.xml");
+    pugi::xml_parse_result result = configFile.load_file(std::filesystem::u8path(Scene::AssetPath("config.xml")).c_str());
     if (result)
     {
         LOG("config.xml parsed without errors");
@@ -280,6 +274,9 @@ bool Engine::LoadConfig()
     else
     {
         LOG("Error loading config.xml: %s", result.description());
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "GameEngine - Missing configuration",
+            "Cannot read config.xml. Extract the complete ZIP before running GameEngine.exe; keep config.xml and Assets next to it.", nullptr);
+        ret = false;
     }
 
     return ret;

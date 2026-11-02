@@ -1,4 +1,7 @@
+#pragma once
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <algorithm>
@@ -24,14 +27,17 @@ public:
     // Destructor
     virtual ~GameObject();
 
-    bool active;
+    bool active = true;
     string name;
 
-    GameObject* parent;
+    GameObject* parent = nullptr;
     vector<unique_ptr<GameObject>> children;
     vector<unique_ptr<Component>> components;
 
     void Update(float dt);
+    glm::mat4 GetGlobalMatrix();
+    bool SetGlobalMatrix(const glm::mat4& matrix);
+    bool GetWorldBounds(glm::vec3& low, glm::vec3& high);
 
     template <typename... Args>
     GameObject* AddChild(Args&&... args) {

@@ -31,7 +31,7 @@ public:
 public:
 	// The window we'll be rendering to
 	SDL_Window* window;
-	SDL_GLContext context;
+	SDL_GLContext context = nullptr;
 
 	std::string title;
 	int width = 1280;

@@ -12,6 +12,7 @@
       ]
     },
     "sdl3",
-    "pugixml"
+    "pugixml",
+    "imguizmo"
   ]
 }

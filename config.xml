@@ -1,7 +1,7 @@
 <!-- Config file for the engine -->
 <config>
   <engine>
-    <title>Game Engine</title>
+    <title>GameEngine 1.0</title>
     <targetFrameRate value="240"/>
   </engine>
 

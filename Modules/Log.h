@@ -3,6 +3,10 @@
 
 #include <cstdio>
 #include <cstdarg>
+#include <vector>
+#include <string>
+std::vector<std::string> GetLogMessages();
+void ClearLogMessages();
 
 #define LOG(format, ...) Log(__FILE__, __LINE__, format, ##__VA_ARGS__)
 

@@ -3,7 +3,7 @@
 #include "Window.h"
 #include "Scene.h"
 #include "Log.h"
-#include <imgui_impl_sdl3.h>
+#include "Editor.h"
 
 #define MAX_KEYS 300
 
@@ -56,11 +56,12 @@ bool Input::PreUpdate()
 	mouseMotionX = 0;
 	mouseMotionY = 0;
 
+	SDL_PumpEvents();
 	const bool* keys = SDL_GetKeyboardState(&numKeys);
 
 	for (int i = 0; i < MAX_KEYS; ++i)
 	{
-		if (keys[i] == 1)
+		if (i < numKeys && keys[i])
 		{
 			if (keyboard[i] == KEY_IDLE)
 				keyboard[i] = KEY_DOWN;
@@ -87,11 +88,22 @@ bool Input::PreUpdate()
 
 	while (SDL_PollEvent(&event))
 	{
-		ImGui_ImplSDL3_ProcessEvent(&event);
+		Editor::ProcessEvent(event);
 
 		switch (event.type)
 		{
-		case SDL_EVENT_QUIT:
+		case SDL_EVENT_KEY_DOWN:
+            if (event.key.scancode < MAX_KEYS && !event.key.repeat) keyboard[event.key.scancode] = KEY_DOWN;
+            break;
+        case SDL_EVENT_KEY_UP:
+            if (event.key.scancode < MAX_KEYS && keyboard[event.key.scancode] != KEY_DOWN)
+                keyboard[event.key.scancode] = KEY_UP;
+            break;
+        case SDL_EVENT_DROP_FILE:
+            Engine::GetInstance().scene->HandleDrop(event.drop.data);
+            break;
+
+        case SDL_EVENT_QUIT:
 			windowEvents[WE_QUIT] = true;
 			break;
 
@@ -121,8 +133,8 @@ bool Input::PreUpdate()
 		case SDL_EVENT_MOUSE_MOTION:
 		{
 			int scale = Engine::GetInstance().window->GetScale();
-			mouseMotionX = (int)(event.motion.xrel / scale);
-			mouseMotionY = (int)(event.motion.yrel / scale);
+			mouseMotionX += (int)(event.motion.xrel / scale);
+			mouseMotionY += (int)(event.motion.yrel / scale);
 			mouseX = (int)(event.motion.x / scale);
 			mouseY = (int)(event.motion.y / scale);
 			break;

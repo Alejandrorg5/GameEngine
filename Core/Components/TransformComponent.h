@@ -23,10 +23,7 @@ public:
         // 1. Traslación
         transform = glm::translate(transform, position);
 
-        // 2. Rotación (Euler angles en radianes)
-        transform = glm::rotate(transform, glm::radians(rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
-        transform = glm::rotate(transform, glm::radians(rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
-        transform = glm::rotate(transform, glm::radians(rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+        transform *= glm::mat4_cast(glm::quat(glm::radians(rotation)));
 
         // 3. Escala
         transform = glm::scale(transform, scale);

@@ -2,6 +2,7 @@
 #include "Log.h"
 #include "Engine.h"
 #include <glad/glad.h>
+#include <algorithm>
 
 Window::Window() : Module()
 {
@@ -27,9 +28,9 @@ bool Window::Awake()
 	}
 	else
 	{
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
 		SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
@@ -44,9 +45,15 @@ bool Window::Awake()
 		bool fullscreen_window = configParameters.child("fullscreen_window").attribute("value").as_bool();
 
 		//TODO Get the values from the config file
-		width = configParameters.child("resolution").attribute("width").as_int();
-		height = configParameters.child("resolution").attribute("height").as_int();
-		scale = configParameters.child("resolution").attribute("scale").as_int();
+		width = configParameters.child("resolution").attribute("width").as_int(1280);
+		height = configParameters.child("resolution").attribute("height").as_int(720);
+		scale = configParameters.child("resolution").attribute("scale").as_int(1);
+        if (scale < 1) scale = 1;
+        SDL_Rect usable{};
+        if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable)) {
+            width = std::min(std::max(width, 640), usable.w);
+            height = std::min(std::max(height, 480), std::max(480, usable.h - 40));
+        }
 
 		if (fullscreen == true)        flags |= SDL_WINDOW_FULLSCREEN;
 		if (borderless == true)        flags |= SDL_WINDOW_BORDERLESS;
@@ -64,11 +71,22 @@ bool Window::Awake()
 		else
 		{
 			context = SDL_GL_CreateContext(window);
-			if (!context)
-				ret = false;
+			if (!context) {
+				LOG("OpenGL context creation failed: %s", SDL_GetError());
+                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "GameEngine - OpenGL 3.3 required",
+                    "Your graphics driver could not create an OpenGL 3.3 Core context.\nInstall the graphics driver from Intel, AMD or NVIDIA and try again.\nThis version requires Windows 10/11 x64 and an OpenGL 3.3 compatible GPU.", window);
+				return false;
+			}
 
-			if (gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress)) == 0)
-				ret = false;
+			if (gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress)) == 0) {
+				LOG("OpenGL loader initialization failed");
+				return false;
+			}
+			if (!GLAD_GL_VERSION_3_3) {
+                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "GameEngine", "OpenGL 3.3 or newer is required.", window);
+                return false;
+            }
+            LOG("OpenGL: %s; GPU: %s", glGetString(GL_VERSION), glGetString(GL_RENDERER));
 
 			if (fullscreen_window == true)
 			{
@@ -88,14 +106,15 @@ bool Window::CleanUp()
 {
 	LOG("Destroying SDL window and quitting all SDL systems");
 
-	// Destroy window
-	if (window != NULL)
-	{
-		SDL_DestroyWindow(window);
-	}
 	if (context != NULL)
 	{
 		SDL_GL_DestroyContext(context);
+		context = nullptr;
+	}
+	if (window != NULL)
+	{
+		SDL_DestroyWindow(window);
+		window = nullptr;
 	}
 
 	// Quit SDL subsystems

@@ -3,6 +3,9 @@
 #include "Module.h"
 #include "SDL3/SDL.h"
 #include <glm/glm.hpp>
+#include <glad/glad.h>
+#include <climits>
+#include <vector>
 
 class Render : public Module
 {
@@ -32,6 +35,10 @@ public:
 
 	// Called before quitting
 	bool CleanUp();
+	void BeginScene(const glm::mat4& view, const glm::mat4& projection);
+	void SetObject(const glm::mat4& model, GLuint texture, bool vertexColor = false);
+    void DrawLines(const std::vector<glm::vec3>& points, const glm::vec3& color);
+    GLuint GetCheckerTexture() const { return checkerTexture; }
 
 	void SetViewPort(const SDL_Rect& rect);
 	void ResetViewPort();
@@ -53,5 +60,13 @@ public:
 	SDL_Color background;
 
 private:
+	GLuint shaderProgram = 0;
+    GLuint checkerTexture = 0;
+    GLuint lineVAO = 0, lineVBO = 0;
+	GLint modelLocation = -1;
+	GLint viewLocation = -1;
+	GLint projectionLocation = -1;
+	GLint texturedLocation = -1;
+	GLint vertexColorLocation = -1;
 	bool vsync = false;
 };

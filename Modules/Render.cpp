@@ -2,6 +2,7 @@
 #include "Window.h"
 #include "Render.h"
 #include "Log.h"
+#include <glm/gtc/type_ptr.hpp>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -22,45 +23,138 @@ Render::~Render()
 }
 
 // Called before render is available
-bool Render::Awake()
-{
-	LOG("Create SDL rendering context");
-	bool ret = true;
+namespace {
+GLuint CompileShader(GLenum type, const char* source) {
+    const GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &source, nullptr);
+    glCompileShader(shader);
+    GLint success = GL_FALSE;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        GLint length = 0;
+        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &length);
+        std::string message(length > 0 ? length : 1, '\0');
+        glGetShaderInfoLog(shader, static_cast<GLsizei>(message.size()), nullptr, &message[0]);
+        LOG("Shader compilation failed: %s", message.c_str());
+        glDeleteShader(shader);
+        return 0;
+    }
+    return shader;
+}
+}
 
-	//int scale = Engine::GetInstance().window->GetScale();
-	//SDL_Window* window = Engine::GetInstance().window->window;
+bool Render::Awake() {
+    const char* vertexSource = R"glsl(#version 330 core
+layout(location = 0) in vec3 position;
+layout(location = 2) in vec2 uv;
+layout(location = 3) in vec3 vertexColor;
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+uniform bool useVertexColor;
+out vec2 texCoord;
+out vec3 color;
+void main() {
+    gl_Position = projection * view * model * vec4(position, 1.0);
+    texCoord = uv;
+    color = useVertexColor ? vertexColor : vec3(1.0);
+}
+)glsl";
+    const char* fragmentSource = R"glsl(#version 330 core
+in vec2 texCoord;
+in vec3 color;
+uniform sampler2D diffuseTexture;
+uniform bool textured;
+out vec4 fragmentColor;
+void main() {
+    fragmentColor = textured ? texture(diffuseTexture, texCoord) * vec4(color, 1.0)
+                             : vec4(color, 1.0);
+}
+)glsl";
+    const GLuint vertex = CompileShader(GL_VERTEX_SHADER, vertexSource);
+    if (!vertex) return false;
+    const GLuint fragment = CompileShader(GL_FRAGMENT_SHADER, fragmentSource);
+    if (!fragment) {
+        glDeleteShader(vertex);
+        return false;
+    }
+    shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertex);
+    glAttachShader(shaderProgram, fragment);
+    glLinkProgram(shaderProgram);
+    glDeleteShader(vertex);
+    glDeleteShader(fragment);
+    GLint success = GL_FALSE;
+    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        GLint length = 0;
+        glGetProgramiv(shaderProgram, GL_INFO_LOG_LENGTH, &length);
+        std::string message(length > 0 ? length : 1, '\0');
+        glGetProgramInfoLog(shaderProgram, static_cast<GLsizei>(message.size()), nullptr, &message[0]);
+        LOG("Shader link failed: %s", message.c_str());
+        glDeleteProgram(shaderProgram);
+        shaderProgram = 0;
+        return false;
+    }
+    modelLocation = glGetUniformLocation(shaderProgram, "model");
+    viewLocation = glGetUniformLocation(shaderProgram, "view");
+    projectionLocation = glGetUniformLocation(shaderProgram, "projection");
+    texturedLocation = glGetUniformLocation(shaderProgram, "textured");
+    vertexColorLocation = glGetUniformLocation(shaderProgram, "useVertexColor");
+    glUseProgram(shaderProgram);
+    glUniform1i(glGetUniformLocation(shaderProgram, "diffuseTexture"), 0);
+    glUseProgram(0);
+    unsigned char pixels[64 * 64 * 4];
+    for (int y = 0; y < 64; ++y) {
+        for (int x = 0; x < 64; ++x) {
+            const unsigned char value = ((x / 8 + y / 8) % 2) ? 255 : 0;
+            const int offset = (y * 64 + x) * 4;
+            pixels[offset] = pixels[offset + 1] = pixels[offset + 2] = value;
+            pixels[offset + 3] = 255;
+        }
+    }
+    glGenTextures(1, &checkerTexture);
+    glBindTexture(GL_TEXTURE_2D, checkerTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 64, 64, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glGenVertexArrays(1, &lineVAO);
+    glGenBuffers(1, &lineVBO);
+    glBindVertexArray(lineVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, lineVBO);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), nullptr);
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    LOG("OpenGL default shader compiled and linked successfully");
+    return true;
+}
 
-	////L05 TODO 5 - Load the configuration of the Render module
+void Render::BeginScene(const glm::mat4& view, const glm::mat4& projection) {
+    glUseProgram(shaderProgram);
+    glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(projectionLocation, 1, GL_FALSE, glm::value_ptr(projection));
+}
 
-	//// SDL3: no flags; create default renderer and set vsync separately
-	//renderer = SDL_CreateRenderer(window, nullptr);
+void Render::SetObject(const glm::mat4& model, GLuint texture, bool vertexColor) {
+    glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm::value_ptr(model));
+    glUniform1i(texturedLocation, texture != 0);
+    glUniform1i(vertexColorLocation, vertexColor);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture);
+}
 
-	//if (renderer == NULL)
-	//{
-	//	LOG("Could not create the renderer! SDL_Error: %s\n", SDL_GetError());
-	//	ret = false;
-	//}
-	//else
-	//{
-	//	if (configParameters.child("vsync").attribute("value").as_bool())
-	//	{
-	//		if (!SDL_SetRenderVSync(renderer, 1))
-	//		{
-	//			LOG("Warning: could not enable vsync: %s", SDL_GetError());
-	//		}
-	//		else
-	//		{
-	//			LOG("Using vsync");
-	//		}
-	//	}
-
-	//	camera.w = Engine::GetInstance().window->width * scale;
-	//	camera.h = Engine::GetInstance().window->height * scale;
-	//	camera.x = 0;
-	//	camera.y = 0;
-	//}
-
-	return ret;
+void Render::DrawLines(const std::vector<glm::vec3>& points, const glm::vec3& color) {
+    if (points.empty()) return;
+    SetObject(glm::mat4(1.0f), 0, true);
+    glVertexAttrib3f(3, color.x, color.y, color.z);
+    glBindVertexArray(lineVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, lineVBO);
+    glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(glm::vec3), points.data(), GL_STREAM_DRAW);
+    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(points.size()));
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 // Called before the first frame
@@ -98,7 +192,13 @@ bool Render::PostUpdate()
 bool Render::CleanUp()
 {
 	LOG("Destroying SDL render");
-	//SDL_DestroyRenderer(renderer);
+	glUseProgram(0);
+	if (shaderProgram) glDeleteProgram(shaderProgram);
+	shaderProgram = 0;
+    if (checkerTexture) glDeleteTextures(1, &checkerTexture);
+    if (lineVAO) glDeleteVertexArrays(1, &lineVAO);
+    if (lineVBO) glDeleteBuffers(1, &lineVBO);
+    checkerTexture = lineVAO = lineVBO = 0;
 	return true;
 }
 

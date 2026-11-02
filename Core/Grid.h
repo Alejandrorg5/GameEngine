@@ -1,3 +1,4 @@
+#pragma once
 #include <glad/glad.h>
 #include <vector>
 
@@ -44,9 +45,9 @@ public:
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
 
-        // Atributo de color (Location 1)
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-        glEnableVertexAttribArray(1);
+        // Atributo de color (Location 3)
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(3);
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
@@ -58,8 +59,12 @@ public:
         glBindVertexArray(0);
     }
 
-    ~Grid() {
+    ~Grid() { CleanUp(); }
+
+    void CleanUp() {
         if (VAO) glDeleteVertexArrays(1, &VAO);
         if (VBO) glDeleteBuffers(1, &VBO);
+        VAO = VBO = 0;
+        vertexCount = 0;
     }
 };

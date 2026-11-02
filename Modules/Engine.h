@@ -41,6 +41,9 @@ public:
 	// Called before quitting
 	bool CleanUp();
 
+	int GetFrameLimit() const { return targetFrameRate; }
+    void SetFrameLimit(int value) { targetFrameRate = value < 0 ? 0 : value; }
+
 	float GetDt() const {
 		return dt;
 	}
@@ -105,7 +108,7 @@ public:
 private:
 
 	// Delta time
-	float dt;
+	float dt = 0.0f;
 	//Frames since startup
 	int frames;
 
