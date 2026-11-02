@@ -13,6 +13,7 @@ public:
 		MESH
 	};
 	bool active;
+
 	GameObject* owner = nullptr;
 	
 	Component() : active(false) {}

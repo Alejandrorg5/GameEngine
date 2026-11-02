@@ -55,6 +55,8 @@ public:
 		return mouseButtons[id - 1];
 	}
 
+	int GetMouseWheel() const { return mouseWheel; }
+
 	// Check if a certain window event happened
 	bool GetWindowEvent(EventWindow ev);
 
@@ -70,4 +72,5 @@ private:
 	int mouseMotionY;
 	int mouseX;
 	int mouseY;
+	int mouseWheel = 0;
 };

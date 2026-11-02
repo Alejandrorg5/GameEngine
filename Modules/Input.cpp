@@ -1,7 +1,9 @@
 #include "Engine.h"
 #include "Input.h"
 #include "Window.h"
+#include "Scene.h"
 #include "Log.h"
+#include <imgui_impl_sdl3.h>
 
 #define MAX_KEYS 300
 
@@ -50,6 +52,10 @@ bool Input::PreUpdate()
 	static SDL_Event event;
 
 	int numKeys = 0;
+	mouseWheel = 0;
+	mouseMotionX = 0;
+	mouseMotionY = 0;
+
 	const bool* keys = SDL_GetKeyboardState(&numKeys);
 
 	for (int i = 0; i < MAX_KEYS; ++i)
@@ -81,6 +87,8 @@ bool Input::PreUpdate()
 
 	while (SDL_PollEvent(&event))
 	{
+		ImGui_ImplSDL3_ProcessEvent(&event);
+
 		switch (event.type)
 		{
 		case SDL_EVENT_QUIT:
@@ -113,10 +121,21 @@ bool Input::PreUpdate()
 		case SDL_EVENT_MOUSE_MOTION:
 		{
 			int scale = Engine::GetInstance().window->GetScale();
-			mouseMotionX = (int) (event.motion.xrel / scale);
+			mouseMotionX = (int)(event.motion.xrel / scale);
 			mouseMotionY = (int)(event.motion.yrel / scale);
 			mouseX = (int)(event.motion.x / scale);
 			mouseY = (int)(event.motion.y / scale);
+			break;
+		}
+		case SDL_EVENT_MOUSE_WHEEL:
+			mouseWheel = (int)event.wheel.y;
+			break;
+		case SDL_EVENT_WINDOW_RESIZED:
+		{
+			if (event.window.data1 != 0)
+				Engine::GetInstance().scene->UpdateViewport(event.window.data1, event.window.data2);
+
+			break;
 		}
 		break;
 		}

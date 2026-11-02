@@ -2,10 +2,17 @@
 
 #include "Module.h"
 #include "SDL3/SDL.h"
+#include <glm/glm.hpp>
 
 class Render : public Module
 {
 public:
+
+	struct Vertex {
+		glm::vec3 Position;
+		glm::vec3 Normal;
+		glm::vec2 TexCoords;
+	};
 
 	Render();
 

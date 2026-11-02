@@ -5,10 +5,16 @@
 #include "Window.h"
 #include "Scene.h"
 #include "Log.h"
-
 #include "Module.h"
-#include "../Core/GameObject.h"
 
+#include "../Core/GameObject.h"
+#include "../Core/Components/MeshComponent.h"
+#include "../Core/Grid.h"
+#include "../Core/Camera.h"
+#include "../Core/ModelLoader.h"
+#include "../Core/TextureLoader.h"
+
+#include <il.h>
 #include <glad/glad.h>
 #include <SDL3/SDL.h>
 
@@ -21,6 +27,10 @@
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_opengl3.h>
+
+#include <assimp/cimport.h>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 
 struct SDL_Texture;
 
@@ -52,10 +62,16 @@ public:
 	bool CleanUp();
 
 	void Init_ImGui();
+	void Scene::DrawGameObjectNode(GameObject* obj);
+	void Show_ImGui(float dt);
+	void RenderScene(float dt);
+	void UpdateViewport(int w, int h);
 
-	vector<GameObject> game_objects;
-	GameObject* root;
+	vector<GameObject*> game_objects;
+	GameObject root;
+	MeshComponent* renderer = nullptr;
 
+	aiLogStream stream;
 private:
 	
 	int wWidth, wHeight;
@@ -63,5 +79,6 @@ private:
 	GLuint cVBuff;
 	GLuint iBuff;
 	GLuint tex;
-
+	Grid sceneGrid;
+	Camera editorCamera;
 };
