@@ -38,7 +38,7 @@ void Camera::Focus(GameObject* object, bool frame) {
 }
 
 void Camera::Update(float dt, GameObject* selected, bool mouseAllowed, bool keyboardAllowed) {
-    auto& input = *Engine::GetInstance().input;
+    auto& input = Engine::GetInstance().GetInput();
     const auto held = [&](SDL_Scancode key) {
         const auto state = input.GetKey(key);
         return state == KEY_DOWN || state == KEY_REPEAT;

@@ -7,7 +7,7 @@
 void MeshComponent::Render() {
     if (!owner || meshes.empty()) return;
     const auto* texture = owner->GetComponent<TextureComponent>();
-    auto& renderer = *Engine::GetInstance().render;
+    auto& renderer = Engine::GetInstance().GetRender();
     const glm::mat4 model = owner->GetGlobalMatrix();
     const GLuint textureID = texture ? (texture->ShowsChecker() ? renderer.GetCheckerTexture() : texture->Id()) : 0;
     renderer.SetObject(model, textureID);

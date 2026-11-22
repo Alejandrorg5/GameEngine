@@ -28,7 +28,10 @@ public:
 	int GetScale() const;
 	
 
-public:
+    SDL_Window* Handle() const { return window; }
+    SDL_GLContext Context() const { return context; }
+
+private:
 	// The window we'll be rendering to
 	SDL_Window* window;
 	SDL_GLContext context = nullptr;

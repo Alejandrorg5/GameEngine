@@ -1,7 +1,6 @@
 #include "Scene.h"
 #include "Engine.h"
 #include "Render.h"
-#include "Editor.h"
 #include "../Core/Components/TransformComponent.h"
 #include "../Core/Components/MeshComponent.h"
 #include "../Core/Components/TextureComponent.h"
@@ -28,8 +27,7 @@ bool Scene::Awake() {
     LOG("DevIL initialized: %s", ilGetString(IL_VERSION_NUM));
     stream.callback = [](const char* message, char*) { LOG("Assimp: %s", message); };
     aiAttachLogStream(&stream);
-    editor = std::make_unique<Editor>();
-    return editor->Init();
+    return true;
 }
 bool Scene::Start() {
     root.SetName("Scene");
@@ -50,24 +48,21 @@ bool Scene::Start() {
     chair->scale = glm::vec3(0.01f);
     chair->position.x = 5.0f;
     if (selectedObject->GetWorldBounds(low, high)) chair->position.y -= low.y;
-    editor->camera.yaw = -135.0f;
-    editor->camera.Focus(&root, true);
     selectedObject = root.GetChildren().front().get();
     sceneGrid.Init(50, 1.0f);
     return true;
 }
-bool Scene::Update(float dt) { editor->Draw(*this, dt); return true; }
-void Scene::RenderScene(const glm::mat4& view, const glm::mat4& projection, float dt) {
+void Scene::RenderScene(const glm::mat4& view, const glm::mat4& projection, float dt, GameObject* highlight) {
     glClearColor(background.r, background.g, background.b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     if (depthTest) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
     glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
-    auto& renderer = *Engine::GetInstance().render;
+    auto& renderer = Engine::GetInstance().GetRender();
     renderer.BeginScene(view, projection);
     if (showGrid) { renderer.SetObject(glm::mat4(1.0f), 0, true); sceneGrid.Draw(); }
     root.Update(dt);
     glm::vec3 low, high;
-    if (selectedObject && selectedObject != &root && selectedObject->GetWorldBounds(low, high)) {
+    if (highlight && highlight != &root && highlight->GetWorldBounds(low, high)) {
         glm::vec3 corners[8];
         for (int i = 0; i < 8; ++i) corners[i] = {i & 1 ? high.x : low.x, i & 2 ? high.y : low.y, i & 4 ? high.z : low.z};
         std::vector<glm::vec3> lines;
@@ -86,7 +81,6 @@ bool Scene::CleanUp() {
     root.RemoveComponent<MeshComponent>();
     root.RemoveComponent<TextureComponent>();
     sceneGrid.CleanUp();
-    if (editor) { editor->CleanUp(); editor.reset(); }
     aiDetachAllLogStreams();
     return true;
 }

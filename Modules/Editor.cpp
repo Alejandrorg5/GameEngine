@@ -3,11 +3,11 @@
 #include <psapi.h>
 #include "Editor.h"
 #include "Scene.h"
+#include "Input.h"
+#include <functional>
 #include "../Core/Components/MeshComponent.h"
 #include "../Core/Components/TextureComponent.h"
 #include "../Core/Components/TransformComponent.h"
-#include <functional>
-#include <algorithm>
 #include "Engine.h"
 #include "Window.h"
 #include "Log.h"
@@ -48,7 +48,7 @@ void Link(const char* label, const char* url) {
     if (ImGui::Button(label) && !SDL_OpenURL(url)) LOG("Cannot open link: %s", SDL_GetError());
 }
 }
-bool Editor::Init() {
+bool Editor::Awake() {
     IMGUI_CHECKVERSION(); ImGui::CreateContext();
     auto& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_DockingEnable;
@@ -62,11 +62,21 @@ bool Editor::Init() {
     style.Colors[ImGuiCol_WindowBg].w = 1.0f;
     style.WindowRounding = 0.0f; style.FrameRounding = 3.0f;
     style.WindowPadding = ImVec2(10, 10); style.ItemSpacing = ImVec2(8, 6);
-    const float scale = SDL_GetWindowDisplayScale(Engine::GetInstance().window->window);
+    const float scale = SDL_GetWindowDisplayScale(Engine::GetInstance().GetWindow().Handle());
     if (scale > 0) { style.FontScaleDpi = scale; style.ScaleAllSizes(scale); }
-    if (!ImGui_ImplSDL3_InitForOpenGL(Engine::GetInstance().window->window, Engine::GetInstance().window->context)) return false;
+    if (!ImGui_ImplSDL3_InitForOpenGL(Engine::GetInstance().GetWindow().Handle(), Engine::GetInstance().GetWindow().Context())) return false;
     if (!ImGui_ImplOpenGL3_Init("#version 330 core")) return false;
+    Engine::GetInstance().GetInput().SetEventHandler(ProcessEvent);
     LOG("Editor initialized: Dear ImGui %s", IMGUI_VERSION);
+    return true;
+}
+bool Editor::Start() {
+    camera.yaw = -135.0f;
+    camera.Focus(&Engine::GetInstance().GetScene().Root(), true);
+    return true;
+}
+bool Editor::Update(float dt) {
+    Draw(Engine::GetInstance().GetScene(), dt);
     return true;
 }
 void Editor::ProcessEvent(const SDL_Event& event) {
@@ -108,7 +118,7 @@ void Editor::Hierarchy(GameObject& object, Scene& scene) {
         scene.Select(&object);
         transformRejected = false;
     }
-    if (&object != &scene.root && ImGui::BeginPopupContextItem("Object actions")) {
+    if (&object != &scene.Root() && ImGui::BeginPopupContextItem("Object actions")) {
         if (ImGui::MenuItem("Delete", "Del")) deleteRequest = &object;
         ImGui::EndPopup();
     }
@@ -209,7 +219,7 @@ void Editor::Configuration(Scene& scene) {
         ImGui::Checkbox("Grid", &scene.showGrid); ImGui::ColorEdit3("Background", &scene.background.x);
     }
     if (ImGui::CollapsingHeader("Window")) {
-        auto* window = Engine::GetInstance().window->window;
+        auto* window = Engine::GetInstance().GetWindow().Handle();
         int size[2]; SDL_GetWindowSize(window, &size[0], &size[1]);
         if (ImGui::InputInt2("Size", size, ImGuiInputTextFlags_EnterReturnsTrue))
             SDL_SetWindowSize(window, std::max(size[0], 800), std::max(size[1], 600));
@@ -289,14 +299,14 @@ void Editor::Draw(Scene& scene, float dt) {
     DockPanels();
     if (showHierarchy) {
         if (ImGui::Begin("Hierarchy", &showHierarchy)) {
-            const bool canDelete = scene.GetSelection() && scene.GetSelection() != &scene.root;
+            const bool canDelete = scene.GetSelection() && scene.GetSelection() != &scene.Root();
             ImGui::BeginDisabled(!canDelete || ImGuizmo::IsUsing());
             if (ImGui::Button("Delete selected")) deleteRequest = scene.GetSelection();
             ImGui::EndDisabled();
             if (ImGui::IsWindowFocused() && !ImGui::GetIO().WantTextInput && !ImGuizmo::IsUsing()
                 && ImGui::IsKeyPressed(ImGuiKey_Delete, false) && canDelete) deleteRequest = scene.GetSelection();
             ImGui::Separator();
-            Hierarchy(scene.root, scene);
+            Hierarchy(scene.Root(), scene);
             revealSelection = false;
         }
         ImGui::End();
@@ -355,11 +365,10 @@ void Editor::Draw(Scene& scene, float dt) {
                 const bool usingGizmo = ImGuizmo::IsUsing();
                 camera.Update(std::clamp(dt / 1000.0f, 0.0f, 0.1f), scene.GetSelection(), hovered && !usingGizmo, keyboard && !usingGizmo);
                 const float aspect = static_cast<float>(targetWidth) / targetHeight;
-                const glm::mat4 projection = glm::perspective(glm::radians(45.0f), aspect,
-                    std::max(0.01f, camera.distance / 10000.0f), std::max(100.0f, camera.distance * 4.0f));
+                const glm::mat4 projection = camera.Projection(aspect);
                 const glm::mat4 view = camera.GetViewMatrix();
                 bool overGizmo = false;
-                if (auto* selected = scene.GetSelection(); selected && selected != &scene.root && selected->GetComponent<TransformComponent>()) {
+                if (auto* selected = scene.GetSelection(); selected && selected != &scene.Root() && selected->GetComponent<TransformComponent>()) {
                     ImGuizmo::SetOrthographic(false);
                     ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
                     ImGuizmo::SetRect(imageStart.x, imageStart.y, size.x, size.y);
@@ -390,7 +399,7 @@ void Editor::Draw(Scene& scene, float dt) {
                     transformRejected = false;
                 }
                 glBindFramebuffer(GL_FRAMEBUFFER, framebuffer); glViewport(0, 0, targetWidth, targetHeight);
-                scene.RenderScene(view, projection, dt);
+                scene.RenderScene(view, projection, dt, scene.GetSelection());
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);
             }
         }
@@ -408,21 +417,22 @@ void Editor::Draw(Scene& scene, float dt) {
     }
     DeleteDialog(scene);
     ImGui::Render();
-    int w = 0, h = 0; SDL_GetWindowSizeInPixels(Engine::GetInstance().window->window, &w, &h);
+    int w = 0, h = 0; SDL_GetWindowSizeInPixels(Engine::GetInstance().GetWindow().Handle(), &w, &h);
     glViewport(0, 0, w, h); glClearColor(0.08f, 0.09f, 0.10f, 1); glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-    SDL_GL_SwapWindow(Engine::GetInstance().window->window);
+    SDL_GL_SwapWindow(Engine::GetInstance().GetWindow().Handle());
 }
-void Editor::CleanUp() {
+bool Editor::CleanUp() {
+    Engine::GetInstance().GetInput().SetEventHandler(nullptr);
     glDeleteRenderbuffers(1, &depthBuffer); glDeleteTextures(1, &colorTexture); glDeleteFramebuffers(1, &framebuffer);
     depthBuffer = colorTexture = framebuffer = 0;
     ImGui_ImplOpenGL3_Shutdown(); ImGui_ImplSDL3_Shutdown(); ImGui::DestroyContext();
+    return true;
 }
-
 
 void Editor::DeleteDialog(Scene& scene) {
     if (deleteRequest) {
-        if (deleteRequest != &scene.root) {
+        if (deleteRequest != &scene.Root()) {
             if (deleteRequest->GetChildren().empty()) scene.DeleteObject(deleteRequest);
             else { deleteTarget = deleteRequest; ImGui::OpenPopup("Delete object?"); }
         }
