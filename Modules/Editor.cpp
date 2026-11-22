@@ -3,6 +3,8 @@
 #include <psapi.h>
 #include "Editor.h"
 #include "Scene.h"
+#include <functional>
+#include <algorithm>
 #include "Engine.h"
 #include "Window.h"
 #include "Log.h"

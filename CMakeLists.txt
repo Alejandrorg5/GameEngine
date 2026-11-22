@@ -10,6 +10,10 @@ if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
 endif()
 
 set(ENGINE_SOURCE
+"Core/Grid.cpp"
+"Core/Mesh.cpp"
+"Core/Camera.cpp"
+"Core/TextureLoader.cpp"
 "Core/main.cpp"
 "Core/Mesh.h"
 "Core/Grid.h"
