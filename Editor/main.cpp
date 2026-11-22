@@ -1,4 +1,4 @@
-#include "../Modules/Editor.h"
+#include "Editor.h"
 #include "../Modules/Engine.h"
 #include "../Modules/RunEngine.h"
 

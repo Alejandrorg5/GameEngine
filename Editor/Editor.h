@@ -3,7 +3,7 @@
 #include <glad/glad.h>
 #include <array>
 #include "../Core/Camera.h"
-#include "Module.h"
+#include "../Modules/Module.h"
 
 class Scene;
 class Editor final : public Module {
