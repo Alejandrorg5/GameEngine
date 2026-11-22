@@ -1,9 +1,9 @@
 #include <iostream>
-#include "../Modules/Engine.h"
-#include "../Modules/Log.h"
+#include "Engine.h"
+#include "RunEngine.h"
+#include "Log.h"
 
-
-int main(int argc, char* argv[]) {
+int RunEngine() {
 
 	LOG("Engine starting ...");
 

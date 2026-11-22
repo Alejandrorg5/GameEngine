@@ -1,5 +1,8 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include "GameObject.h"
+#include "Components/TransformComponent.h"
+#include "Components/MeshComponent.h"
+#include <stdexcept>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <cmath>
 
@@ -10,24 +13,27 @@ glm::mat4 GameObject::GetGlobalMatrix() {
 }
 
 
-GameObject::GameObject()
-{
+GameObject::GameObject(std::string value) : name(std::move(value)) {
     AddComponent<TransformComponent>();
-    AddComponent<MeshComponent>();
-    AddComponent<TextureComponent>();
 }
 
-GameObject::GameObject(string n)
-{
-    name = n;
-    AddComponent<TransformComponent>();
-    AddComponent<MeshComponent>();
-    AddComponent<TextureComponent>();
+GameObject& GameObject::AddChild(std::string value) {
+    return AdoptChild(std::make_unique<GameObject>(std::move(value)));
 }
 
-// Destructor
-GameObject::~GameObject()
-{
+GameObject& GameObject::AdoptChild(std::unique_ptr<GameObject> child) {
+    if (!child) throw std::invalid_argument("Cannot adopt an empty child");
+    child->parent = this;
+    children.push_back(std::move(child));
+    return *children.back();
+}
+
+bool GameObject::RemoveChild(GameObject& child) {
+    const auto found = std::find_if(children.begin(), children.end(),
+        [&](const auto& item) { return item.get() == &child; });
+    if (found == children.end()) return false;
+    children.erase(found);
+    return true;
 }
 
 void GameObject::Update(float deltaTime) {

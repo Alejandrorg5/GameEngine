@@ -9,13 +9,9 @@ class TransformComponent : public Component {
 
 public:
 
-	glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f);;
-	glm::vec3 rotation = glm::vec3(0.0f, 0.0f, 0.0f);;
-	glm::vec3 scale = glm::vec3(1.0f, 1.0f, 1.0f);;
-
-	void Enable() { active = true; };
-	void Disable() { active = false; };
-    void Update(float dt) override {};
+	glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f);
+	glm::vec3 rotation = glm::vec3(0.0f, 0.0f, 0.0f);
+	glm::vec3 scale = glm::vec3(1.0f, 1.0f, 1.0f);
 
     glm::mat4 GetModelMatrix() const {
         glm::mat4 transform(1.0f);

@@ -3,15 +3,20 @@
 #include <glad/glad.h>
 #include <array>
 #include "../Core/Camera.h"
+#include "../Modules/Module.h"
+
 class Scene;
-class Editor {
+class Editor final : public Module {
 public:
-    bool Init();
-    void Draw(Scene& scene, float dt);
-    void CleanUp();
-    static void ProcessEvent(const SDL_Event& event);
-    Camera camera;
+    bool Awake() override;
+    bool Start() override;
+    bool Update(float dt) override;
+    bool CleanUp() override;
 private:
+    void Draw(Scene& scene, float dt);
+    static void ProcessEvent(const SDL_Event& event);
+    std::string layoutPath;
+    Camera camera;
     void Hierarchy(GameObject& object, Scene& scene);
     void Inspector(GameObject* selectedObject);
     void Configuration(Scene& scene);

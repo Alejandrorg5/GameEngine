@@ -4,15 +4,25 @@
     "devil",
     "glad",
     "glm",
-    {
-      "name": "imgui",
-      "features": [
-        "opengl3-binding",
-        "sdl3-binding"
-      ]
-    },
     "sdl3",
-    "pugixml",
-    "imguizmo"
-  ]
+    "pugixml"
+  ],
+  "name": "game-engine",
+  "version-string": "1.0.0",
+  "features": {
+    "editor": {
+      "description": "Dear ImGui editor and transform gizmos",
+      "dependencies": [
+        {
+          "name": "imgui",
+          "features": [
+            "docking-experimental",
+            "opengl3-binding",
+            "sdl3-binding"
+          ]
+        },
+        "imguizmo"
+      ]
+    }
+  }
 }

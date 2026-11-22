@@ -3,7 +3,6 @@
 #include "Window.h"
 #include "Scene.h"
 #include "Log.h"
-#include "Editor.h"
 
 #define MAX_KEYS 300
 
@@ -42,7 +41,7 @@ bool Input::Awake()
 // Called before the first frame
 bool Input::Start()
 {
-	SDL_StopTextInput(Engine::GetInstance().window->window);
+	SDL_StopTextInput(Engine::GetInstance().GetWindow().Handle());
 	return true;
 }
 
@@ -88,7 +87,7 @@ bool Input::PreUpdate()
 
 	while (SDL_PollEvent(&event))
 	{
-		Editor::ProcessEvent(event);
+		if (eventHandler) eventHandler(event);
 
 		switch (event.type)
 		{
@@ -100,7 +99,7 @@ bool Input::PreUpdate()
                 keyboard[event.key.scancode] = KEY_UP;
             break;
         case SDL_EVENT_DROP_FILE:
-            Engine::GetInstance().scene->HandleDrop(event.drop.data);
+            Engine::GetInstance().GetScene().HandleDrop(event.drop.data);
             break;
 
         case SDL_EVENT_QUIT:
@@ -132,7 +131,7 @@ bool Input::PreUpdate()
 
 		case SDL_EVENT_MOUSE_MOTION:
 		{
-			int scale = Engine::GetInstance().window->GetScale();
+			int scale = Engine::GetInstance().GetWindow().GetScale();
 			mouseMotionX += (int)(event.motion.xrel / scale);
 			mouseMotionY += (int)(event.motion.yrel / scale);
 			mouseX = (int)(event.motion.x / scale);
@@ -142,14 +141,7 @@ bool Input::PreUpdate()
 		case SDL_EVENT_MOUSE_WHEEL:
 			mouseWheel = (int)event.wheel.y;
 			break;
-		case SDL_EVENT_WINDOW_RESIZED:
-		{
-			if (event.window.data1 != 0)
-				Engine::GetInstance().scene->UpdateViewport(event.window.data1, event.window.data2);
 
-			break;
-		}
-		break;
 		}
 	}
 

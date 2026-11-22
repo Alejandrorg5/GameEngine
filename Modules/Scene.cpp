@@ -1,7 +1,11 @@
 #include "Scene.h"
 #include "Engine.h"
 #include "Render.h"
-#include "Editor.h"
+#include "../Core/Components/TransformComponent.h"
+#include "../Core/Components/MeshComponent.h"
+#include "../Core/Components/TextureComponent.h"
+#include "../Core/TextureLoader.h"
+#include <IL/il.h>
 #include "Log.h"
 #include "../Core/ModelLoader.h"
 #include <functional>
@@ -23,11 +27,10 @@ bool Scene::Awake() {
     LOG("DevIL initialized: %s", ilGetString(IL_VERSION_NUM));
     stream.callback = [](const char* message, char*) { LOG("Assimp: %s", message); };
     aiAttachLogStream(&stream);
-    editor = std::make_unique<Editor>();
-    return editor->Init();
+    return true;
 }
 bool Scene::Start() {
-    root.name = "Scene";
+    root.SetName("Scene");
     if (!ImportModel(AssetPath("Assets/Models/BakerHouse.fbx"))) return false;
     auto* transform = selectedObject->GetComponent<TransformComponent>();
     // Convert the supplied Blender FBX presentation to the editor's Y-up, metre scale.
@@ -45,25 +48,21 @@ bool Scene::Start() {
     chair->scale = glm::vec3(0.01f);
     chair->position.x = 5.0f;
     if (selectedObject->GetWorldBounds(low, high)) chair->position.y -= low.y;
-    editor->camera.yaw = -135.0f;
-    editor->camera.Focus(&root, true);
-    selectedObject = root.children.front().get();
-    game_objects.push_back(&root);
+    selectedObject = root.GetChildren().front().get();
     sceneGrid.Init(50, 1.0f);
     return true;
 }
-bool Scene::Update(float dt) { editor->Draw(*this, dt); return true; }
-void Scene::RenderScene(const glm::mat4& view, const glm::mat4& projection, float dt) {
+void Scene::RenderScene(const glm::mat4& view, const glm::mat4& projection, float dt, GameObject* highlight) {
     glClearColor(background.r, background.g, background.b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     if (depthTest) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
     glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
-    auto& renderer = *Engine::GetInstance().render;
+    auto& renderer = Engine::GetInstance().GetRender();
     renderer.BeginScene(view, projection);
     if (showGrid) { renderer.SetObject(glm::mat4(1.0f), 0, true); sceneGrid.Draw(); }
     root.Update(dt);
     glm::vec3 low, high;
-    if (selectedObject && selectedObject != &root && selectedObject->GetWorldBounds(low, high)) {
+    if (highlight && highlight != &root && highlight->GetWorldBounds(low, high)) {
         glm::vec3 corners[8];
         for (int i = 0; i < 8; ++i) corners[i] = {i & 1 ? high.x : low.x, i & 2 ? high.y : low.y, i & 4 ? high.z : low.z};
         std::vector<glm::vec3> lines;
@@ -76,11 +75,12 @@ void Scene::RenderScene(const glm::mat4& view, const glm::mat4& projection, floa
     glUseProgram(0);
 }
 bool Scene::CleanUp() {
-    LOG("Freeing scene and editor");
+    LOG("Freeing scene");
     selectedObject = nullptr;
-    game_objects.clear(); root.children.clear(); root.components.clear();
+    root.ClearChildren();
+    root.RemoveComponent<MeshComponent>();
+    root.RemoveComponent<TextureComponent>();
     sceneGrid.CleanUp();
-    if (editor) { editor->CleanUp(); editor.reset(); }
     aiDetachAllLogStreams();
     return true;
 }
@@ -88,9 +88,7 @@ bool Scene::CleanUp() {
 bool Scene::ImportModel(const std::string& path) {
     auto model = ModelLoader::LoadFBX(path);
     if (!model) return false;
-    model->parent = &root;
-    selectedObject = model.get();
-    root.children.push_back(std::move(model));
+    selectedObject = &root.AdoptChild(std::move(model));
     return true;
 }
 
@@ -111,15 +109,16 @@ void Scene::HandleDrop(const char* path) {
         LOG("Select an object before dropping a texture.");
         return;
     }
-    std::vector<TextureComponent*> targets;
+    std::vector<GameObject*> targets;
     std::function<void(GameObject&)> collect = [&](GameObject& object) {
         auto* mesh = object.GetComponent<MeshComponent>();
         auto* texture = object.GetComponent<TextureComponent>();
-        if (texture && (&object == selectedObject || (mesh && !mesh->meshes.empty())))
-            targets.push_back(texture);
+        if ((texture && &object == selectedObject) || (mesh && !mesh->meshes.empty()))
+            targets.push_back(&object);
         for (const auto& child : object.GetChildren()) collect(*child);
     };
     collect(*selectedObject);
+    if (targets.empty()) targets.push_back(selectedObject);
     // Each component owns its texture. Prepare all replacements before changing the scene.
     std::vector<GLuint> replacements;
     for (size_t i = 0; i < targets.size(); ++i) {
@@ -131,8 +130,9 @@ void Scene::HandleDrop(const char* path) {
         replacements.push_back(id);
     }
     for (size_t i = 0; i < targets.size(); ++i) {
-        targets[i]->SetTexture(replacements[i], path);
-        targets[i]->showChecker = false;
+        auto* texture = targets[i]->AddComponent<TextureComponent>();
+        texture->SetTexture(replacements[i], path);
+        texture->SetChecker(false);
     }
     LOG("Texture applied to %zu components: %s", targets.size(), path);
 }
@@ -140,13 +140,18 @@ void Scene::HandleDrop(const char* path) {
 
 void Scene::CreatePrimitive(Primitive type) {
     Mesh mesh;
-    const auto triangle = [&](glm::vec3 a, glm::vec3 b, glm::vec3 c) {
+    const auto triangle = [&](glm::vec3 a, glm::vec3 b, glm::vec3 c,
+                              glm::vec2 uvA, glm::vec2 uvB, glm::vec2 uvC) {
         const glm::vec3 normal = glm::normalize(glm::cross(b - a, c - a));
         const auto start = static_cast<unsigned int>(mesh.vertices.size());
-        mesh.vertices.push_back({a, normal, {0, 0}});
-        mesh.vertices.push_back({b, normal, {1, 0}});
-        mesh.vertices.push_back({c, normal, {0.5f, 1}});
+        mesh.vertices.push_back({a, normal, uvA});
+        mesh.vertices.push_back({b, normal, uvB});
+        mesh.vertices.push_back({c, normal, uvC});
         mesh.indices.insert(mesh.indices.end(), {start, start + 1, start + 2});
+    };
+    const auto quad = [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 d) {
+        triangle(a, b, c, {0,1}, {0,0}, {1,0});
+        triangle(a, c, d, {0,1}, {1,0}, {1,1});
     };
     const char* name = "Cube";
     if (type == Primitive::Cube || type == Primitive::Pyramid) {
@@ -155,13 +160,12 @@ void Scene::CreatePrimitive(Primitive type) {
         if (type == Primitive::Cube) {
             const unsigned int faces[][4] = {{0,1,5,4},{1,2,6,5},{2,3,7,6},{3,0,4,7},{4,5,6,7},{3,2,1,0}};
             for (const auto& face : faces) {
-                triangle(corners[face[0]],corners[face[2]],corners[face[1]]);
-                triangle(corners[face[0]],corners[face[3]],corners[face[2]]);
+                quad(corners[face[0]], corners[face[3]], corners[face[2]], corners[face[1]]);
             }
         } else {
             name = "Pyramid";
-            for (int i = 0; i < 4; ++i) triangle(corners[i], {0,2,0}, corners[(i+1)%4]);
-            triangle(corners[0],corners[1],corners[2]); triangle(corners[0],corners[2],corners[3]);
+            for (int i = 0; i < 4; ++i) triangle(corners[i], {0,2,0}, corners[(i+1)%4], {0,1}, {0.5f,0}, {1,1});
+            quad(corners[0], corners[1], corners[2], corners[3]);
         }
     } else if (type == Primitive::Sphere) {
         name = "Sphere";
@@ -183,74 +187,50 @@ void Scene::CreatePrimitive(Primitive type) {
         for (unsigned int i = 0; i < segments; ++i) {
             const float a = i * 6.2831853f/segments, b = (i+1)*6.2831853f/segments;
             const glm::vec3 p(cos(a),0,sin(a)), q(cos(b),0,sin(b)), up(0,2,0);
-            triangle(p,p+up,q); triangle(q,p+up,q+up);
-            triangle({0,0,0},p,q); triangle({0,2,0},q+up,p+up);
+            const float u0 = static_cast<float>(i) / segments, u1 = static_cast<float>(i+1) / segments;
+            triangle(p, p+up, q, {u0,1}, {u0,0}, {u1,1});
+            triangle(q, p+up, q+up, {u1,1}, {u0,0}, {u1,0});
+            const glm::vec2 capP = (glm::vec2(p.x,p.z) + 1.0f) * 0.5f;
+            const glm::vec2 capQ = (glm::vec2(q.x,q.z) + 1.0f) * 0.5f;
+            triangle({0,0,0}, p, q, {0.5f,0.5f}, capP, capQ);
+            triangle(up, q+up, p+up, {0.5f,0.5f}, capQ, capP);
         }
     }
     mesh.SetupMesh();
-    auto* object = root.AddChild(name);
-    object->GetComponent<MeshComponent>()->meshes.push_back(std::move(mesh));
-    Select(object);
+    auto& object = root.AddChild(name);
+    object.AddComponent<TextureComponent>();
+    object.AddComponent<MeshComponent>()->meshes.push_back(std::move(mesh));
+    Select(&object);
     LOG("Created primitive: %s", name);
 }
 
 
 GameObject* Scene::GetModelRoot(GameObject* object) {
     if (!object || object == &root) return nullptr;
-    while (object->parent && object->parent != &root) object = object->parent;
+    while (object->GetParent() && object->GetParent() != &root) object = object->GetParent();
     return object;
 }
 
 bool Scene::DeleteObject(GameObject* object) {
-    if (!object || object == &root || !object->parent) return false;
-    auto& siblings = object->parent->children;
-    const auto found = std::find_if(siblings.begin(), siblings.end(),
-        [object](const auto& child) { return child.get() == object; });
-    if (found == siblings.end()) return false;
-    for (auto* selected = selectedObject; selected; selected = selected->parent) {
+    if (!object || object == &root || !object->GetParent()) return false;
+    for (auto* selected = selectedObject; selected; selected = selected->GetParent()) {
         if (selected == object) { selectedObject = nullptr; break; }
     }
-    LOG("Deleted scene object: %s", object->name.c_str());
-    siblings.erase(found);
-    return true;
+    LOG("Deleted scene object: %s", object->GetName().c_str());
+    return object->GetParent()->RemoveChild(*object);
 }
 
 GameObject* Scene::Raycast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance) {
     if (maxDistance <= 0 || glm::length(direction) < 1e-8f) return nullptr;
     const glm::vec3 ray = glm::normalize(direction);
-    struct Candidate { GameObject* object; float entry; };
-    std::vector<Candidate> candidates;
-    std::function<void(GameObject&)> gather = [&](GameObject& object) {
-        const auto* component = object.GetComponent<MeshComponent>();
-        if (component && !component->meshes.empty()) {
-            glm::vec3 low, high;
-            if (object.GetWorldBounds(low, high)) {
-                float nearT = 0, farT = maxDistance;
-                bool hit = true;
-                for (int axis = 0; axis < 3; ++axis) {
-                    if (std::abs(ray[axis]) < 1e-8f) {
-                        if (origin[axis] < low[axis] || origin[axis] > high[axis]) { hit = false; break; }
-                    } else {
-                        float a = (low[axis] - origin[axis]) / ray[axis];
-                        float b = (high[axis] - origin[axis]) / ray[axis];
-                        if (a > b) std::swap(a, b);
-                        nearT = std::max(nearT, a); farT = std::min(farT, b);
-                        if (nearT > farT) { hit = false; break; }
-                    }
-                }
-                if (hit) candidates.push_back({&object, nearT});
-            }
-        }
-        for (const auto& child : object.children) gather(*child);
-    };
-    gather(root);
-    std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) { return a.entry < b.entry; });
     GameObject* nearest = nullptr;
     float closest = maxDistance;
-    for (const auto& candidate : candidates) {
-        if (candidate.entry > closest) break;
-        const auto model = candidate.object->GetGlobalMatrix();
-        for (const auto& mesh : candidate.object->GetComponent<MeshComponent>()->meshes) {
+    std::function<void(GameObject&)> visit = [&](GameObject& object) {
+        for (const auto& child : object.GetChildren()) visit(*child);
+        const auto* component = object.GetComponent<MeshComponent>();
+        if (!component || component->meshes.empty()) return;
+        const auto model = object.GetGlobalMatrix();
+        for (const auto& mesh : component->meshes) {
             for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
                 // World-space triangles keep hit distances comparable across different object scales.
                 const glm::vec3 a(model * glm::vec4(mesh.vertices[mesh.indices[i]].Position, 1));
@@ -267,9 +247,10 @@ GameObject* Scene::Raycast(const glm::vec3& origin, const glm::vec3& direction, 
                 const float v = glm::dot(ray, q) / determinant;
                 if (v < 0 || u + v > 1) continue;
                 const float distance = glm::dot(edge2, q) / determinant;
-                if (distance >= 0 && distance < closest) { closest = distance; nearest = candidate.object; }
+                if (distance >= 0 && distance < closest) { closest = distance; nearest = &object; }
             }
         }
-    }
+    };
+    visit(root);
     return nearest;
 }

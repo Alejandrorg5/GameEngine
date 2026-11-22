@@ -2,11 +2,17 @@
 #include <windows.h>
 #include <psapi.h>
 #include "Editor.h"
-#include "Scene.h"
-#include "Engine.h"
-#include "Window.h"
-#include "Log.h"
+#include "../Modules/Scene.h"
+#include "../Modules/Input.h"
+#include <functional>
+#include "../Core/Components/MeshComponent.h"
+#include "../Core/Components/TextureComponent.h"
+#include "../Core/Components/TransformComponent.h"
+#include "../Modules/Engine.h"
+#include "../Modules/Window.h"
+#include "../Modules/Log.h"
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <ImGuizmo.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui_impl_sdl3.h>
@@ -16,30 +22,61 @@
 #include <algorithm>
 
 namespace {
-constexpr ImGuiWindowFlags panelFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse;
-void Place(float x, float y, float w, float h) {
-    ImGui::SetNextWindowPos(ImVec2(x, y));
-    ImGui::SetNextWindowSize(ImVec2(std::max(w, 1.0f), std::max(h, 1.0f)));
+void DockPanels() {
+    const auto* viewport = ImGui::GetMainViewport();
+    const ImGuiID dock = ImHashStr("Editor workspace");
+    if (!ImGui::DockBuilderGetNode(dock)) {
+        ImGui::DockBuilderAddNode(dock, ImGuiDockNodeFlags_DockSpace);
+        ImGui::DockBuilderSetNodeSize(dock, viewport->WorkSize);
+        ImGuiID center = dock;
+        const auto left = ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.20f, nullptr, &center);
+        const auto right = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.32f, nullptr, &center);
+        const auto bottom = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.25f, nullptr, &center);
+        ImGui::DockBuilderDockWindow("Hierarchy", left);
+        ImGui::DockBuilderDockWindow("Inspector", right);
+        ImGui::DockBuilderDockWindow("Scene", center);
+        ImGui::DockBuilderDockWindow("Console", bottom);
+        ImGui::DockBuilderFinish(dock);
+    }
+    ImGui::DockSpaceOverViewport(dock, viewport);
+}
+void CollectTextures(GameObject& node, std::vector<TextureComponent*>& textures) {
+    if (auto* texture = node.GetComponent<TextureComponent>()) textures.push_back(texture);
+    for (const auto& child : node.GetChildren()) CollectTextures(*child, textures);
 }
 void Link(const char* label, const char* url) {
     if (ImGui::Button(label) && !SDL_OpenURL(url)) LOG("Cannot open link: %s", SDL_GetError());
 }
 }
-bool Editor::Init() {
+bool Editor::Awake() {
     IMGUI_CHECKVERSION(); ImGui::CreateContext();
     auto& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.IniFilename = nullptr;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_DockingEnable;
+    if (char* directory = SDL_GetPrefPath("GameEngine", "Editor")) {
+        layoutPath = std::string(directory) + "imgui.ini";
+        SDL_free(directory);
+        io.IniFilename = layoutPath.c_str();
+    }
     ImGui::StyleColorsDark();
     auto& style = ImGui::GetStyle();
     style.Colors[ImGuiCol_WindowBg].w = 1.0f;
     style.WindowRounding = 0.0f; style.FrameRounding = 3.0f;
     style.WindowPadding = ImVec2(10, 10); style.ItemSpacing = ImVec2(8, 6);
-    const float scale = SDL_GetWindowDisplayScale(Engine::GetInstance().window->window);
+    const float scale = SDL_GetWindowDisplayScale(Engine::GetInstance().GetWindow().Handle());
     if (scale > 0) { style.FontScaleDpi = scale; style.ScaleAllSizes(scale); }
-    if (!ImGui_ImplSDL3_InitForOpenGL(Engine::GetInstance().window->window, Engine::GetInstance().window->context)) return false;
+    if (!ImGui_ImplSDL3_InitForOpenGL(Engine::GetInstance().GetWindow().Handle(), Engine::GetInstance().GetWindow().Context())) return false;
     if (!ImGui_ImplOpenGL3_Init("#version 330 core")) return false;
+    Engine::GetInstance().GetInput().SetEventHandler(ProcessEvent);
     LOG("Editor initialized: Dear ImGui %s", IMGUI_VERSION);
+    return true;
+}
+bool Editor::Start() {
+    camera.yaw = -135.0f;
+    camera.Focus(&Engine::GetInstance().GetScene().Root(), true);
+    return true;
+}
+bool Editor::Update(float dt) {
+    Draw(Engine::GetInstance().GetScene(), dt);
     return true;
 }
 void Editor::ProcessEvent(const SDL_Event& event) {
@@ -69,35 +106,52 @@ void Editor::Hierarchy(GameObject& object, Scene& scene) {
     ImGui::PushID(&object);
     auto flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DefaultOpen;
     if (scene.GetSelection() == &object) flags |= ImGuiTreeNodeFlags_Selected;
-    if (object.children.empty()) flags |= ImGuiTreeNodeFlags_Leaf;
+    if (object.GetChildren().empty()) flags |= ImGuiTreeNodeFlags_Leaf;
     if (revealSelection) {
-        for (auto* ancestor = scene.GetSelection(); ancestor; ancestor = ancestor->parent) {
+        for (auto* ancestor = scene.GetSelection(); ancestor; ancestor = ancestor->GetParent()) {
             if (ancestor == &object) { ImGui::SetNextItemOpen(true); break; }
         }
     }
-    const bool open = ImGui::TreeNodeEx("node", flags, "%s", object.name.c_str());
+    const bool open = ImGui::TreeNodeEx("node", flags, "%s", object.GetName().c_str());
     if (revealSelection && scene.GetSelection() == &object) ImGui::SetScrollHereY();
     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
         scene.Select(&object);
         transformRejected = false;
     }
-    if (&object != &scene.root && ImGui::BeginPopupContextItem("Object actions")) {
+    if (&object != &scene.Root() && ImGui::BeginPopupContextItem("Object actions")) {
         if (ImGui::MenuItem("Delete", "Del")) deleteRequest = &object;
         ImGui::EndPopup();
     }
-    if (open) { for (auto& child : object.children) Hierarchy(*child, scene); ImGui::TreePop(); }
+    if (open) { for (auto& child : object.GetChildren()) Hierarchy(*child, scene); ImGui::TreePop(); }
     ImGui::PopID();
 }
 void Editor::Inspector(GameObject* selectedObject) {
 	if (selectedObject != nullptr) {
 		// Mostrar y editar el nombre del GameObject
 		char nameBuffer[128];
-		strncpy_s(nameBuffer, sizeof(nameBuffer), selectedObject->name.c_str(), _TRUNCATE);
+		strncpy_s(nameBuffer, sizeof(nameBuffer), selectedObject->GetName().c_str(), _TRUNCATE);
 		if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
-			selectedObject->name = nameBuffer;
+			selectedObject->SetName(nameBuffer);
 		}
 
 		ImGui::Separator();
+
+        if (ImGui::Button("Components")) ImGui::OpenPopup("Component actions");
+        if (ImGui::BeginPopup("Component actions")) {
+            if (ImGui::MenuItem("Add transform", nullptr, false, !selectedObject->GetComponent<TransformComponent>()))
+                selectedObject->AddComponent<TransformComponent>();
+            if (ImGui::MenuItem("Remove transform", nullptr, false, selectedObject->GetComponent<TransformComponent>() != nullptr))
+                selectedObject->RemoveComponent<TransformComponent>();
+            if (ImGui::MenuItem("Add mesh", nullptr, false, !selectedObject->GetComponent<MeshComponent>()))
+                selectedObject->AddComponent<MeshComponent>();
+            if (ImGui::MenuItem("Add texture", nullptr, false, !selectedObject->GetComponent<TextureComponent>()))
+                selectedObject->AddComponent<TextureComponent>();
+            if (ImGui::MenuItem("Remove mesh", nullptr, false, selectedObject->GetComponent<MeshComponent>() != nullptr))
+                selectedObject->RemoveComponent<MeshComponent>();
+            if (ImGui::MenuItem("Remove texture", nullptr, false, selectedObject->GetComponent<TextureComponent>() != nullptr))
+                selectedObject->RemoveComponent<TextureComponent>();
+            ImGui::EndPopup();
+        }
 
 		// Transform
 		if (selectedObject->GetComponent<TransformComponent>() != nullptr) {
@@ -130,19 +184,19 @@ void Editor::Inspector(GameObject* selectedObject) {
 		TextureComponent* texComp = selectedObject->GetComponent<TextureComponent>();
 		if (texComp != nullptr) {
 			if (ImGui::CollapsingHeader("Texture", ImGuiTreeNodeFlags_DefaultOpen)) {
-				ImGui::Text("Texture ID: %d", texComp->textureID);
-				ImGui::TextWrapped("Path: %s", texComp->filePath.c_str());
-                ImGui::Text("Size: %d x %d pixels", texComp->width, texComp->height);
-                if (ImGui::Checkbox("Checker texture", &texComp->showChecker)) {
-                    const bool checker = texComp->showChecker;
-                    std::function<void(GameObject&)> apply = [&](GameObject& object) {
-                        if (auto* texture = object.GetComponent<TextureComponent>()) texture->showChecker = checker;
-                        for (auto& child : object.children) apply(*child);
-                    };
-                    apply(*selectedObject);
-                }
+				ImGui::Text("Texture ID: %d", texComp->Id());
+				ImGui::TextWrapped("Path: %s", texComp->Path().c_str());
+                ImGui::Text("Size: %d x %d pixels", texComp->Width(), texComp->Height());
+
 			}
 		}
+        std::vector<TextureComponent*> textures;
+        CollectTextures(*selectedObject, textures);
+        if (!textures.empty()) {
+            bool checker = textures.front()->ShowsChecker();
+            if (ImGui::Checkbox("Checker texture", &checker))
+                for (auto* texture : textures) texture->SetChecker(checker);
+        }
 
 	}
 	else {
@@ -165,7 +219,7 @@ void Editor::Configuration(Scene& scene) {
         ImGui::Checkbox("Grid", &scene.showGrid); ImGui::ColorEdit3("Background", &scene.background.x);
     }
     if (ImGui::CollapsingHeader("Window")) {
-        auto* window = Engine::GetInstance().window->window;
+        auto* window = Engine::GetInstance().GetWindow().Handle();
         int size[2]; SDL_GetWindowSize(window, &size[0], &size[1]);
         if (ImGui::InputInt2("Size", size, ImGuiInputTextFlags_EnterReturnsTrue))
             SDL_SetWindowSize(window, std::max(size[0], 800), std::max(size[1], 600));
@@ -242,36 +296,27 @@ void Editor::Draw(Scene& scene, float dt) {
         }
         ImGui::EndMainMenuBar();
     }
-    const auto* viewport = ImGui::GetMainViewport();
-    const float menuHeight = ImGui::GetFrameHeight();
-    const float x = viewport->Pos.x, y = viewport->Pos.y + menuHeight;
-    const float width = viewport->Size.x, height = viewport->Size.y - menuHeight;
-    const float left = showHierarchy ? std::min(280.0f, width * 0.20f) : 0;
-    const float right = showInspector ? std::min(360.0f, width * 0.26f) : 0;
-    const float bottom = showConsole ? std::min(210.0f, height * 0.25f) : 0;
+    DockPanels();
     if (showHierarchy) {
-        Place(x, y, left, height);
-        if (ImGui::Begin("Hierarchy", &showHierarchy, panelFlags)) {
-            const bool canDelete = scene.GetSelection() && scene.GetSelection() != &scene.root;
+        if (ImGui::Begin("Hierarchy", &showHierarchy)) {
+            const bool canDelete = scene.GetSelection() && scene.GetSelection() != &scene.Root();
             ImGui::BeginDisabled(!canDelete || ImGuizmo::IsUsing());
             if (ImGui::Button("Delete selected")) deleteRequest = scene.GetSelection();
             ImGui::EndDisabled();
             if (ImGui::IsWindowFocused() && !ImGui::GetIO().WantTextInput && !ImGuizmo::IsUsing()
                 && ImGui::IsKeyPressed(ImGuiKey_Delete, false) && canDelete) deleteRequest = scene.GetSelection();
             ImGui::Separator();
-            Hierarchy(scene.root, scene);
+            Hierarchy(scene.Root(), scene);
             revealSelection = false;
         }
         ImGui::End();
     }
     if (showInspector) {
-        Place(x + width - right, y, right, height);
-        if (ImGui::Begin("Inspector", &showInspector, panelFlags)) Inspector(scene.GetSelection());
+        if (ImGui::Begin("Inspector", &showInspector)) Inspector(scene.GetSelection());
         ImGui::End();
     }
     if (showConsole) {
-        Place(x + left, y + height - bottom, width - left - right, bottom);
-        if (ImGui::Begin("Console", &showConsole, panelFlags)) {
+        if (ImGui::Begin("Console", &showConsole)) {
             if (ImGui::Button("Clear")) ClearLogMessages();
             ImGui::SameLine(); ImGui::TextUnformatted("Import, initialization and errors");
             if (ImGui::BeginChild("Messages", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar)) {
@@ -286,8 +331,7 @@ void Editor::Draw(Scene& scene, float dt) {
         ImGui::End();
     }
     if (showScene) {
-        Place(x + left, y, width - left - right, height - bottom);
-        if (ImGui::Begin("Scene", &showScene, panelFlags | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+        if (ImGui::Begin("Scene", &showScene, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
             const char* operations[] = {"Move (W)", "Rotate (E)", "Scale (R)"};
             ImGui::BeginDisabled(ImGuizmo::IsUsing());
             for (int i = 0; i < 3; ++i) {
@@ -321,11 +365,10 @@ void Editor::Draw(Scene& scene, float dt) {
                 const bool usingGizmo = ImGuizmo::IsUsing();
                 camera.Update(std::clamp(dt / 1000.0f, 0.0f, 0.1f), scene.GetSelection(), hovered && !usingGizmo, keyboard && !usingGizmo);
                 const float aspect = static_cast<float>(targetWidth) / targetHeight;
-                const glm::mat4 projection = glm::perspective(glm::radians(45.0f), aspect,
-                    std::max(0.01f, camera.distance / 10000.0f), std::max(100.0f, camera.distance * 4.0f));
+                const glm::mat4 projection = camera.Projection(aspect);
                 const glm::mat4 view = camera.GetViewMatrix();
                 bool overGizmo = false;
-                if (auto* selected = scene.GetSelection(); selected && selected != &scene.root) {
+                if (auto* selected = scene.GetSelection(); selected && selected != &scene.Root() && selected->GetComponent<TransformComponent>()) {
                     ImGuizmo::SetOrthographic(false);
                     ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
                     ImGuizmo::SetRect(imageStart.x, imageStart.y, size.x, size.y);
@@ -356,7 +399,7 @@ void Editor::Draw(Scene& scene, float dt) {
                     transformRejected = false;
                 }
                 glBindFramebuffer(GL_FRAMEBUFFER, framebuffer); glViewport(0, 0, targetWidth, targetHeight);
-                scene.RenderScene(view, projection, dt);
+                scene.RenderScene(view, projection, dt, scene.GetSelection());
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);
             }
         }
@@ -374,29 +417,30 @@ void Editor::Draw(Scene& scene, float dt) {
     }
     DeleteDialog(scene);
     ImGui::Render();
-    int w = 0, h = 0; SDL_GetWindowSizeInPixels(Engine::GetInstance().window->window, &w, &h);
+    int w = 0, h = 0; SDL_GetWindowSizeInPixels(Engine::GetInstance().GetWindow().Handle(), &w, &h);
     glViewport(0, 0, w, h); glClearColor(0.08f, 0.09f, 0.10f, 1); glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-    SDL_GL_SwapWindow(Engine::GetInstance().window->window);
+    SDL_GL_SwapWindow(Engine::GetInstance().GetWindow().Handle());
 }
-void Editor::CleanUp() {
+bool Editor::CleanUp() {
+    Engine::GetInstance().GetInput().SetEventHandler(nullptr);
     glDeleteRenderbuffers(1, &depthBuffer); glDeleteTextures(1, &colorTexture); glDeleteFramebuffers(1, &framebuffer);
     depthBuffer = colorTexture = framebuffer = 0;
     ImGui_ImplOpenGL3_Shutdown(); ImGui_ImplSDL3_Shutdown(); ImGui::DestroyContext();
+    return true;
 }
-
 
 void Editor::DeleteDialog(Scene& scene) {
     if (deleteRequest) {
-        if (deleteRequest != &scene.root) {
-            if (deleteRequest->children.empty()) scene.DeleteObject(deleteRequest);
+        if (deleteRequest != &scene.Root()) {
+            if (deleteRequest->GetChildren().empty()) scene.DeleteObject(deleteRequest);
             else { deleteTarget = deleteRequest; ImGui::OpenPopup("Delete object?"); }
         }
         deleteRequest = nullptr;
     }
     if (ImGui::BeginPopupModal("Delete object?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         if (deleteTarget) {
-            ImGui::Text("Delete '%s' and all its children?", deleteTarget->name.c_str());
+            ImGui::Text("Delete '%s' and all its children?", deleteTarget->GetName().c_str());
             ImGui::TextUnformatted("Only the scene instance is removed. Source files are kept.");
             if (ImGui::Button("Delete")) {
                 scene.DeleteObject(deleteTarget); deleteTarget = nullptr;

@@ -29,6 +29,9 @@ public:
 
 	Input();
 
+    using EventHandler = void (*)(const SDL_Event&);
+    void SetEventHandler(EventHandler handler) { eventHandler = handler; }
+
 	// Destructor
 	virtual ~Input();
 
@@ -65,6 +68,7 @@ public:
 	void GetMouseMotion(int& x, int& y);
 
 private:
+    EventHandler eventHandler = nullptr;
 	bool windowEvents[WE_COUNT];
 	KeyState* keyboard;
 	KeyState mouseButtons[NUM_MOUSE_BUTTONS];

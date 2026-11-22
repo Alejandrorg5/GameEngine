@@ -1,0 +1,12 @@
+foreach(archive IN LISTS CPACK_PACKAGE_FILES)
+    file(SIZE "${archive}" archive_bytes)
+    if(archive_bytes GREATER 30000000)
+        message(FATAL_ERROR "E1 ZIP exceeds 30 MB: ${archive_bytes} bytes")
+    endif()
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E tar tf "${archive}"
+        OUTPUT_VARIABLE entries COMMAND_ERROR_IS_FATAL ANY)
+    string(TOLOWER "${entries}" entries)
+    if(entries MATCHES "[.](pdb|ilk|obj|lib|cpp|cmake|vcxproj)([\r\n]|$)|/(cmakecache[.]txt|cmakelists[.]txt|vcpkg[.]json|vcruntime[0-9_]+d[.]dll|msvcp[0-9_]+d[.]dll|ucrtbased[.]dll)")
+        message(FATAL_ERROR "E1 ZIP contains build files or debug artifacts")
+    endif()
+endforeach()
