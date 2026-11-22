@@ -140,13 +140,18 @@ void Scene::HandleDrop(const char* path) {
 
 void Scene::CreatePrimitive(Primitive type) {
     Mesh mesh;
-    const auto triangle = [&](glm::vec3 a, glm::vec3 b, glm::vec3 c) {
+    const auto triangle = [&](glm::vec3 a, glm::vec3 b, glm::vec3 c,
+                              glm::vec2 uvA, glm::vec2 uvB, glm::vec2 uvC) {
         const glm::vec3 normal = glm::normalize(glm::cross(b - a, c - a));
         const auto start = static_cast<unsigned int>(mesh.vertices.size());
-        mesh.vertices.push_back({a, normal, {0, 0}});
-        mesh.vertices.push_back({b, normal, {1, 0}});
-        mesh.vertices.push_back({c, normal, {0.5f, 1}});
+        mesh.vertices.push_back({a, normal, uvA});
+        mesh.vertices.push_back({b, normal, uvB});
+        mesh.vertices.push_back({c, normal, uvC});
         mesh.indices.insert(mesh.indices.end(), {start, start + 1, start + 2});
+    };
+    const auto quad = [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 d) {
+        triangle(a, b, c, {0,1}, {0,0}, {1,0});
+        triangle(a, c, d, {0,1}, {1,0}, {1,1});
     };
     const char* name = "Cube";
     if (type == Primitive::Cube || type == Primitive::Pyramid) {
@@ -155,13 +160,12 @@ void Scene::CreatePrimitive(Primitive type) {
         if (type == Primitive::Cube) {
             const unsigned int faces[][4] = {{0,1,5,4},{1,2,6,5},{2,3,7,6},{3,0,4,7},{4,5,6,7},{3,2,1,0}};
             for (const auto& face : faces) {
-                triangle(corners[face[0]],corners[face[2]],corners[face[1]]);
-                triangle(corners[face[0]],corners[face[3]],corners[face[2]]);
+                quad(corners[face[0]], corners[face[3]], corners[face[2]], corners[face[1]]);
             }
         } else {
             name = "Pyramid";
-            for (int i = 0; i < 4; ++i) triangle(corners[i], {0,2,0}, corners[(i+1)%4]);
-            triangle(corners[0],corners[1],corners[2]); triangle(corners[0],corners[2],corners[3]);
+            for (int i = 0; i < 4; ++i) triangle(corners[i], {0,2,0}, corners[(i+1)%4], {0,1}, {0.5f,0}, {1,1});
+            quad(corners[0], corners[1], corners[2], corners[3]);
         }
     } else if (type == Primitive::Sphere) {
         name = "Sphere";
@@ -183,8 +187,13 @@ void Scene::CreatePrimitive(Primitive type) {
         for (unsigned int i = 0; i < segments; ++i) {
             const float a = i * 6.2831853f/segments, b = (i+1)*6.2831853f/segments;
             const glm::vec3 p(cos(a),0,sin(a)), q(cos(b),0,sin(b)), up(0,2,0);
-            triangle(p,p+up,q); triangle(q,p+up,q+up);
-            triangle({0,0,0},p,q); triangle({0,2,0},q+up,p+up);
+            const float u0 = static_cast<float>(i) / segments, u1 = static_cast<float>(i+1) / segments;
+            triangle(p, p+up, q, {u0,1}, {u0,0}, {u1,1});
+            triangle(q, p+up, q+up, {u1,1}, {u0,0}, {u1,0});
+            const glm::vec2 capP = (glm::vec2(p.x,p.z) + 1.0f) * 0.5f;
+            const glm::vec2 capQ = (glm::vec2(q.x,q.z) + 1.0f) * 0.5f;
+            triangle({0,0,0}, p, q, {0.5f,0.5f}, capP, capQ);
+            triangle(up, q+up, p+up, {0.5f,0.5f}, capQ, capP);
         }
     }
     mesh.SetupMesh();
