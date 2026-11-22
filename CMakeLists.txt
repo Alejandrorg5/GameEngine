@@ -61,6 +61,15 @@ if(BUILD_EDITOR)
     set(distribution_target GameEngine)
 endif()
 
+option(E1_CHECKS "Build the E1 graphics regression checks" OFF)
+if(E1_CHECKS)
+    enable_testing()
+    add_executable(E1Checks Tests/E1Checks.cpp)
+    target_link_libraries(E1Checks PRIVATE EngineCore)
+    add_test(NAME E1Checks COMMAND E1Checks "${CMAKE_CURRENT_BINARY_DIR}/Testing")
+    set_tests_properties(E1Checks PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
+
 # Check the configuration of the binaries, even if CPack was invoked with -C Release.
 if(CMAKE_CONFIGURATION_TYPES)
     install(CODE [[
