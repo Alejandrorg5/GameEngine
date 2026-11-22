@@ -121,11 +121,11 @@ Para desarrollo se necesitan CMake 3.21 o superior, Ninja, un compilador MSVC co
 ```powershell
 cmake --preset vcpkg -DE1_CHECKS=ON
 cmake --build --preset release
-ctest --test-dir build --output-on-failure
-cpack --config build/CPackConfig.cmake -C Release
+ctest --test-dir build/E1 --output-on-failure
+cpack --config build/E1/CPackConfig.cmake -C Release
 ```
 
-El ZIP del editor se genera en `build/GameEngine-1.0.0-Windows-x64.zip`. Incluye el ejecutable Release, los recursos, la configuración, las DLL, el README y las licencias. Para adjuntar el reparto de tareas, añade `-DE1_TASK_LIST="ruta/al/documento.docx"` al configurar CMake. CPack comprueba el límite de 30 MB.
+El ZIP del editor se genera en `build/E1/GameEngine-1.0.0-Windows-x64.zip`. Incluye el ejecutable Release, los recursos, la configuración, las DLL, el README y las licencias. Para adjuntar el reparto de tareas, añade `-DE1_TASK_LIST="ruta/al/documento.docx"` al configurar CMake. CPack comprueba el límite de 30 MB.
 
 Para compilar únicamente el juego, ejecuta desde la misma terminal:
 
