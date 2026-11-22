@@ -71,11 +71,21 @@ private:
         }
         std::string relative = reference.C_Str();
         std::replace(relative.begin(), relative.end(), '\\', '/');
-        auto candidate = std::filesystem::u8path(relative);
-        if (!candidate.is_absolute()) candidate = directory / candidate;
+        const auto referencePath = std::filesystem::u8path(relative);
+        const auto original = directory / referencePath;
         std::error_code error;
-        if (!std::filesystem::is_regular_file(candidate, error))
-            candidate = directory / std::filesystem::u8path(relative).filename();
+        auto candidate = original;
+        // Exporters often retain another machine's root. Match the longest local
+        // directory suffix first (including .fbm), then the exact filename.
+        if (!std::filesystem::is_regular_file(original, error)) {
+            const auto parts = referencePath.relative_path();
+            for (auto first = parts.begin(); first != parts.end(); ++first) {
+                if (*first == "." || *first == "..") continue;
+                candidate = directory;
+                for (auto it = first; it != parts.end(); ++it) candidate /= *it;
+                if (std::filesystem::is_regular_file(candidate, error)) break;
+            }
+        }
         id = TextureLoader::LoadTexture(candidate.u8string());
         if (id) texture->SetTexture(id, candidate.u8string());
     }
