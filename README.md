@@ -63,6 +63,8 @@ Eliminar un objeto con hijos solicita confirmación y elimina toda su rama de la
 
 ## Ventanas y opciones del editor
 
+Arrastra la pestaña de un panel sobre un indicador de acoplamiento para reorganizar las ventanas. El editor recuerda la distribución en el perfil del usuario. El botón **Components** del Inspector permite añadir o quitar Transform, Mesh y Texture del objeto seleccionado.
+
 **Scene** muestra la escena 3D, el cuadro de selección y los gizmos. **Hierarchy** muestra los GameObjects y sus relaciones padre-hijo. **Inspector** muestra los componentes del objeto seleccionado:
 
 - **Transform:** posición, rotación y escala editables; la rotación se expresa en grados y las transformaciones son relativas al padre.
@@ -96,7 +98,7 @@ La barra superior incluye:
 ## Funcionalidades extra
 
 - **Edición de Transform en Inspector**, además de la consulta exigida por E1.
-- **Selección precisa con el ratón:** rayo de cámara, descarte mediante AABB e intersección con triángulos para escoger el impacto más cercano. Un clic en una parte del FBX selecciona el modelo completo.
+- **Selección precisa con el ratón:** rayo de cámara e intersección con triángulos para escoger el impacto más cercano. Un clic en una parte del FBX selecciona el modelo completo.
 - **Resaltado de selección** y sincronización entre Scene, Hierarchy e Inspector.
 - **Gizmos de movimiento, rotación y escala con ImGuizmo**, atajos W/E/R y modos Local/World donde corresponde.
 - **Eliminación de objetos y subárboles**, con confirmación cuando hay hijos y conservación de los archivos originales.
@@ -106,24 +108,31 @@ La barra superior incluye:
 ## Observaciones para la evaluación
 
 - Los GameObjects de malla disponen de Transform, Mesh y Textura. Se conservan nodos intermedios del FBX para representar su jerarquía y transformaciones.
-- La interfaz se implementa en `Modules/Editor.*`; la gestión de escena, el renderer, los cargadores y los componentes mantienen sus responsabilidades fuera del editor.
+- El editor usa la biblioteca `EngineCore`. El ejecutable independiente `GameRuntime` utiliza esa misma biblioteca para cargar y dibujar la escena inicial.
 - Baker House se ajusta al cargar para aparecer de pie y con una escala adecuada, sin modificar el FBX original.
 - Las transformaciones y eliminaciones son cambios de la sesión. Esta entrega **no incluye guardado/carga de escenas ni deshacer/rehacer**.
 - Una rotación bajo un padre con escala no uniforme puede requerir una deformación que Transform no representa. En ese caso se rechaza la operación y se muestra un aviso para seleccionar el padre.
 - La distribución se ha probado localmente desde una carpeta independiente; su ejecución en otro equipo requiere cumplir los requisitos de Windows x64 y OpenGL indicados.
-- El documento de reparto de tareas y `LICENCE.md` se gestionan como documentos separados de este README.
 
 ## Compilación desde el código fuente
 
 Para desarrollo se necesitan CMake 3.21 o superior, Ninja, un compilador MSVC con soporte C++17, Windows SDK y vcpkg. Define `VCPKG_ROOT` apuntando a la instalación de vcpkg y ejecuta desde una terminal de desarrollo x64 de Visual Studio:
 
 ```powershell
-cmake --preset vcpkg
+cmake --preset vcpkg -DE1_CHECKS=ON
 cmake --build --preset release
+ctest --test-dir build --output-on-failure
 cpack --config build/CPackConfig.cmake -C Release
 ```
 
-El manifiesto de vcpkg declara SDL3, GLAD, GLM, Dear ImGui, ImGuizmo, Assimp, DevIL y pugixml. El paquete generado se llama `GameEngine-1.0.0-Windows-x64.zip` y se encuentra en `build`. Para preparar la entrega completa, incorpora también el README, la licencia del proyecto y el documento de tareas; comprueba el límite de 30 MB del ZIP final.
+El ZIP del editor se genera en `build/GameEngine-1.0.0-Windows-x64.zip`. Incluye el ejecutable Release, los recursos, la configuración, las DLL, el README y las licencias. Para adjuntar el reparto de tareas, añade `-DE1_TASK_LIST="ruta/al/documento.docx"` al configurar CMake. CPack comprueba el límite de 30 MB.
+
+Para compilar únicamente el juego, ejecuta desde la misma terminal:
+
+```powershell
+cmake --preset vcpkg -B build/game -DBUILD_EDITOR=OFF
+cmake --build build/game --target GameRuntime
+```
 
 ## Recursos y créditos
 
