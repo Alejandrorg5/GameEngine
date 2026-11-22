@@ -71,6 +71,16 @@ target_link_libraries(GameEngine PRIVATE psapi)
 
 
 # A distributable contains runtime files only; build logs and tools stay in build/.
+# Check the configuration of the binaries, even if CPack was invoked with -C Release.
+if(CMAKE_CONFIGURATION_TYPES)
+    install(CODE [[
+        if(NOT CMAKE_INSTALL_CONFIG_NAME STREQUAL "Release")
+            message(FATAL_ERROR "The E1 package requires a Release build.")
+        endif()
+    ]])
+elseif(NOT CMAKE_BUILD_TYPE STREQUAL "Release")
+    install(CODE [[message(FATAL_ERROR "The E1 package requires a Release build.")]])
+endif()
 install(TARGETS GameEngine
     RUNTIME_DEPENDENCIES
         DIRECTORIES "$<TARGET_FILE_DIR:GameEngine>"
@@ -79,7 +89,12 @@ install(TARGETS GameEngine
     RUNTIME DESTINATION .
     LIBRARY DESTINATION .)
 install(DIRECTORY Assets DESTINATION .)
-install(FILES config.xml DESTINATION .)
+install(FILES config.xml LICENCE.md DESTINATION .)
+    install(FILES README.md DESTINATION .)
+    set(E1_TASK_LIST "" CACHE FILEPATH "E1 task list to include in the submission")
+    if(E1_TASK_LIST)
+        install(FILES "${E1_TASK_LIST}" DESTINATION .)
+    endif()
 
 # Ship the release Visual C++ runtime locally: no installer or admin access required.
 set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION .)
@@ -94,6 +109,9 @@ file(GLOB dependency_notices "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/sha
 foreach(notice IN LISTS dependency_notices)
     get_filename_component(package_directory "${notice}" DIRECTORY)
     get_filename_component(package_name "${package_directory}" NAME)
+    if(package_name MATCHES "^vcpkg-")
+        continue()
+    endif()
     install(FILES "${notice}" DESTINATION "Licenses/${package_name}")
 endforeach()
 
@@ -103,4 +121,5 @@ set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_FILE_NAME "GameEngine-${PROJECT_VERSION}-Windows-x64")
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
 set(CPACK_PACKAGE_DIRECTORY "${CMAKE_BINARY_DIR}")
+set(CPACK_POST_BUILD_SCRIPTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckPackage.cmake")
 include(CPack)
