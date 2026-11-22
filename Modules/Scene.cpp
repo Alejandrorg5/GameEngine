@@ -227,39 +227,14 @@ bool Scene::DeleteObject(GameObject* object) {
 GameObject* Scene::Raycast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance) {
     if (maxDistance <= 0 || glm::length(direction) < 1e-8f) return nullptr;
     const glm::vec3 ray = glm::normalize(direction);
-    struct Candidate { GameObject* object; float entry; };
-    std::vector<Candidate> candidates;
-    std::function<void(GameObject&)> gather = [&](GameObject& object) {
-        const auto* component = object.GetComponent<MeshComponent>();
-        if (component && !component->meshes.empty()) {
-            glm::vec3 low, high;
-            if (object.GetWorldBounds(low, high)) {
-                float nearT = 0, farT = maxDistance;
-                bool hit = true;
-                for (int axis = 0; axis < 3; ++axis) {
-                    if (std::abs(ray[axis]) < 1e-8f) {
-                        if (origin[axis] < low[axis] || origin[axis] > high[axis]) { hit = false; break; }
-                    } else {
-                        float a = (low[axis] - origin[axis]) / ray[axis];
-                        float b = (high[axis] - origin[axis]) / ray[axis];
-                        if (a > b) std::swap(a, b);
-                        nearT = std::max(nearT, a); farT = std::min(farT, b);
-                        if (nearT > farT) { hit = false; break; }
-                    }
-                }
-                if (hit) candidates.push_back({&object, nearT});
-            }
-        }
-        for (const auto& child : object.children) gather(*child);
-    };
-    gather(root);
-    std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) { return a.entry < b.entry; });
     GameObject* nearest = nullptr;
     float closest = maxDistance;
-    for (const auto& candidate : candidates) {
-        if (candidate.entry > closest) break;
-        const auto model = candidate.object->GetGlobalMatrix();
-        for (const auto& mesh : candidate.object->GetComponent<MeshComponent>()->meshes) {
+    std::function<void(GameObject&)> visit = [&](GameObject& object) {
+        for (const auto& child : object.GetChildren()) visit(*child);
+        const auto* component = object.GetComponent<MeshComponent>();
+        if (!component || component->meshes.empty()) return;
+        const auto model = object.GetGlobalMatrix();
+        for (const auto& mesh : component->meshes) {
             for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
                 // World-space triangles keep hit distances comparable across different object scales.
                 const glm::vec3 a(model * glm::vec4(mesh.vertices[mesh.indices[i]].Position, 1));
@@ -276,9 +251,10 @@ GameObject* Scene::Raycast(const glm::vec3& origin, const glm::vec3& direction, 
                 const float v = glm::dot(ray, q) / determinant;
                 if (v < 0 || u + v > 1) continue;
                 const float distance = glm::dot(edge2, q) / determinant;
-                if (distance >= 0 && distance < closest) { closest = distance; nearest = candidate.object; }
+                if (distance >= 0 && distance < closest) { closest = distance; nearest = &object; }
             }
         }
-    }
+    };
+    visit(root);
     return nearest;
 }
