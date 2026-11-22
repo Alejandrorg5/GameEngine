@@ -18,6 +18,7 @@ private:
     void About();
     bool ResizeTarget(int width, int height);
     void DeleteDialog(Scene& scene);
+    std::string layoutPath;
     int gizmoOperation = 0;
     bool gizmoLocal = true;
     bool transformRejected = false;

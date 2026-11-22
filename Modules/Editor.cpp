@@ -7,6 +7,7 @@
 #include "Window.h"
 #include "Log.h"
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <ImGuizmo.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui_impl_sdl3.h>
@@ -16,10 +17,23 @@
 #include <algorithm>
 
 namespace {
-constexpr ImGuiWindowFlags panelFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse;
-void Place(float x, float y, float w, float h) {
-    ImGui::SetNextWindowPos(ImVec2(x, y));
-    ImGui::SetNextWindowSize(ImVec2(std::max(w, 1.0f), std::max(h, 1.0f)));
+void DockPanels() {
+    const auto* viewport = ImGui::GetMainViewport();
+    const ImGuiID dock = ImHashStr("Editor workspace");
+    if (!ImGui::DockBuilderGetNode(dock)) {
+        ImGui::DockBuilderAddNode(dock, ImGuiDockNodeFlags_DockSpace);
+        ImGui::DockBuilderSetNodeSize(dock, viewport->WorkSize);
+        ImGuiID center = dock;
+        const auto left = ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.20f, nullptr, &center);
+        const auto right = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.32f, nullptr, &center);
+        const auto bottom = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.25f, nullptr, &center);
+        ImGui::DockBuilderDockWindow("Hierarchy", left);
+        ImGui::DockBuilderDockWindow("Inspector", right);
+        ImGui::DockBuilderDockWindow("Scene", center);
+        ImGui::DockBuilderDockWindow("Console", bottom);
+        ImGui::DockBuilderFinish(dock);
+    }
+    ImGui::DockSpaceOverViewport(dock, viewport);
 }
 void Link(const char* label, const char* url) {
     if (ImGui::Button(label) && !SDL_OpenURL(url)) LOG("Cannot open link: %s", SDL_GetError());
@@ -28,8 +42,12 @@ void Link(const char* label, const char* url) {
 bool Editor::Init() {
     IMGUI_CHECKVERSION(); ImGui::CreateContext();
     auto& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.IniFilename = nullptr;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_DockingEnable;
+    if (char* directory = SDL_GetPrefPath("GameEngine", "Editor")) {
+        layoutPath = std::string(directory) + "imgui.ini";
+        SDL_free(directory);
+        io.IniFilename = layoutPath.c_str();
+    }
     ImGui::StyleColorsDark();
     auto& style = ImGui::GetStyle();
     style.Colors[ImGuiCol_WindowBg].w = 1.0f;
@@ -242,16 +260,9 @@ void Editor::Draw(Scene& scene, float dt) {
         }
         ImGui::EndMainMenuBar();
     }
-    const auto* viewport = ImGui::GetMainViewport();
-    const float menuHeight = ImGui::GetFrameHeight();
-    const float x = viewport->Pos.x, y = viewport->Pos.y + menuHeight;
-    const float width = viewport->Size.x, height = viewport->Size.y - menuHeight;
-    const float left = showHierarchy ? std::min(280.0f, width * 0.20f) : 0;
-    const float right = showInspector ? std::min(360.0f, width * 0.26f) : 0;
-    const float bottom = showConsole ? std::min(210.0f, height * 0.25f) : 0;
+    DockPanels();
     if (showHierarchy) {
-        Place(x, y, left, height);
-        if (ImGui::Begin("Hierarchy", &showHierarchy, panelFlags)) {
+        if (ImGui::Begin("Hierarchy", &showHierarchy)) {
             const bool canDelete = scene.GetSelection() && scene.GetSelection() != &scene.root;
             ImGui::BeginDisabled(!canDelete || ImGuizmo::IsUsing());
             if (ImGui::Button("Delete selected")) deleteRequest = scene.GetSelection();
@@ -265,13 +276,11 @@ void Editor::Draw(Scene& scene, float dt) {
         ImGui::End();
     }
     if (showInspector) {
-        Place(x + width - right, y, right, height);
-        if (ImGui::Begin("Inspector", &showInspector, panelFlags)) Inspector(scene.GetSelection());
+        if (ImGui::Begin("Inspector", &showInspector)) Inspector(scene.GetSelection());
         ImGui::End();
     }
     if (showConsole) {
-        Place(x + left, y + height - bottom, width - left - right, bottom);
-        if (ImGui::Begin("Console", &showConsole, panelFlags)) {
+        if (ImGui::Begin("Console", &showConsole)) {
             if (ImGui::Button("Clear")) ClearLogMessages();
             ImGui::SameLine(); ImGui::TextUnformatted("Import, initialization and errors");
             if (ImGui::BeginChild("Messages", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar)) {
@@ -286,8 +295,7 @@ void Editor::Draw(Scene& scene, float dt) {
         ImGui::End();
     }
     if (showScene) {
-        Place(x + left, y, width - left - right, height - bottom);
-        if (ImGui::Begin("Scene", &showScene, panelFlags | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+        if (ImGui::Begin("Scene", &showScene, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
             const char* operations[] = {"Move (W)", "Rotate (E)", "Scale (R)"};
             ImGui::BeginDisabled(ImGuizmo::IsUsing());
             for (int i = 0; i < 3; ++i) {
