@@ -1,4 +1,5 @@
 #include "MeshComponent.h"
+#include "TextureComponent.h"
 #include "../GameObject.h"
 #include "../../Modules/Engine.h"
 #include <cmath>
@@ -8,7 +9,7 @@ void MeshComponent::Render() {
     const auto* texture = owner->GetComponent<TextureComponent>();
     auto& renderer = *Engine::GetInstance().render;
     const glm::mat4 model = owner->GetGlobalMatrix();
-    const GLuint textureID = texture ? (texture->showChecker ? renderer.GetCheckerTexture() : texture->textureID) : 0;
+    const GLuint textureID = texture ? (texture->ShowsChecker() ? renderer.GetCheckerTexture() : texture->Id()) : 0;
     renderer.SetObject(model, textureID);
     for (const auto& mesh : meshes) mesh.Draw();
 

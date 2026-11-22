@@ -3,6 +3,9 @@
 #include <psapi.h>
 #include "Editor.h"
 #include "Scene.h"
+#include "../Core/Components/MeshComponent.h"
+#include "../Core/Components/TextureComponent.h"
+#include "../Core/Components/TransformComponent.h"
 #include <functional>
 #include <algorithm>
 #include "Engine.h"
@@ -36,6 +39,10 @@ void DockPanels() {
         ImGui::DockBuilderFinish(dock);
     }
     ImGui::DockSpaceOverViewport(dock, viewport);
+}
+void CollectTextures(GameObject& node, std::vector<TextureComponent*>& textures) {
+    if (auto* texture = node.GetComponent<TextureComponent>()) textures.push_back(texture);
+    for (const auto& child : node.GetChildren()) CollectTextures(*child, textures);
 }
 void Link(const char* label, const char* url) {
     if (ImGui::Button(label) && !SDL_OpenURL(url)) LOG("Cannot open link: %s", SDL_GetError());
@@ -89,13 +96,13 @@ void Editor::Hierarchy(GameObject& object, Scene& scene) {
     ImGui::PushID(&object);
     auto flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DefaultOpen;
     if (scene.GetSelection() == &object) flags |= ImGuiTreeNodeFlags_Selected;
-    if (object.children.empty()) flags |= ImGuiTreeNodeFlags_Leaf;
+    if (object.GetChildren().empty()) flags |= ImGuiTreeNodeFlags_Leaf;
     if (revealSelection) {
-        for (auto* ancestor = scene.GetSelection(); ancestor; ancestor = ancestor->parent) {
+        for (auto* ancestor = scene.GetSelection(); ancestor; ancestor = ancestor->GetParent()) {
             if (ancestor == &object) { ImGui::SetNextItemOpen(true); break; }
         }
     }
-    const bool open = ImGui::TreeNodeEx("node", flags, "%s", object.name.c_str());
+    const bool open = ImGui::TreeNodeEx("node", flags, "%s", object.GetName().c_str());
     if (revealSelection && scene.GetSelection() == &object) ImGui::SetScrollHereY();
     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
         scene.Select(&object);
@@ -105,19 +112,36 @@ void Editor::Hierarchy(GameObject& object, Scene& scene) {
         if (ImGui::MenuItem("Delete", "Del")) deleteRequest = &object;
         ImGui::EndPopup();
     }
-    if (open) { for (auto& child : object.children) Hierarchy(*child, scene); ImGui::TreePop(); }
+    if (open) { for (auto& child : object.GetChildren()) Hierarchy(*child, scene); ImGui::TreePop(); }
     ImGui::PopID();
 }
 void Editor::Inspector(GameObject* selectedObject) {
 	if (selectedObject != nullptr) {
 		// Mostrar y editar el nombre del GameObject
 		char nameBuffer[128];
-		strncpy_s(nameBuffer, sizeof(nameBuffer), selectedObject->name.c_str(), _TRUNCATE);
+		strncpy_s(nameBuffer, sizeof(nameBuffer), selectedObject->GetName().c_str(), _TRUNCATE);
 		if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
-			selectedObject->name = nameBuffer;
+			selectedObject->SetName(nameBuffer);
 		}
 
 		ImGui::Separator();
+
+        if (ImGui::Button("Components")) ImGui::OpenPopup("Component actions");
+        if (ImGui::BeginPopup("Component actions")) {
+            if (ImGui::MenuItem("Add transform", nullptr, false, !selectedObject->GetComponent<TransformComponent>()))
+                selectedObject->AddComponent<TransformComponent>();
+            if (ImGui::MenuItem("Remove transform", nullptr, false, selectedObject->GetComponent<TransformComponent>() != nullptr))
+                selectedObject->RemoveComponent<TransformComponent>();
+            if (ImGui::MenuItem("Add mesh", nullptr, false, !selectedObject->GetComponent<MeshComponent>()))
+                selectedObject->AddComponent<MeshComponent>();
+            if (ImGui::MenuItem("Add texture", nullptr, false, !selectedObject->GetComponent<TextureComponent>()))
+                selectedObject->AddComponent<TextureComponent>();
+            if (ImGui::MenuItem("Remove mesh", nullptr, false, selectedObject->GetComponent<MeshComponent>() != nullptr))
+                selectedObject->RemoveComponent<MeshComponent>();
+            if (ImGui::MenuItem("Remove texture", nullptr, false, selectedObject->GetComponent<TextureComponent>() != nullptr))
+                selectedObject->RemoveComponent<TextureComponent>();
+            ImGui::EndPopup();
+        }
 
 		// Transform
 		if (selectedObject->GetComponent<TransformComponent>() != nullptr) {
@@ -150,19 +174,19 @@ void Editor::Inspector(GameObject* selectedObject) {
 		TextureComponent* texComp = selectedObject->GetComponent<TextureComponent>();
 		if (texComp != nullptr) {
 			if (ImGui::CollapsingHeader("Texture", ImGuiTreeNodeFlags_DefaultOpen)) {
-				ImGui::Text("Texture ID: %d", texComp->textureID);
-				ImGui::TextWrapped("Path: %s", texComp->filePath.c_str());
-                ImGui::Text("Size: %d x %d pixels", texComp->width, texComp->height);
-                if (ImGui::Checkbox("Checker texture", &texComp->showChecker)) {
-                    const bool checker = texComp->showChecker;
-                    std::function<void(GameObject&)> apply = [&](GameObject& object) {
-                        if (auto* texture = object.GetComponent<TextureComponent>()) texture->showChecker = checker;
-                        for (auto& child : object.children) apply(*child);
-                    };
-                    apply(*selectedObject);
-                }
+				ImGui::Text("Texture ID: %d", texComp->Id());
+				ImGui::TextWrapped("Path: %s", texComp->Path().c_str());
+                ImGui::Text("Size: %d x %d pixels", texComp->Width(), texComp->Height());
+
 			}
 		}
+        std::vector<TextureComponent*> textures;
+        CollectTextures(*selectedObject, textures);
+        if (!textures.empty()) {
+            bool checker = textures.front()->ShowsChecker();
+            if (ImGui::Checkbox("Checker texture", &checker))
+                for (auto* texture : textures) texture->SetChecker(checker);
+        }
 
 	}
 	else {
@@ -335,7 +359,7 @@ void Editor::Draw(Scene& scene, float dt) {
                     std::max(0.01f, camera.distance / 10000.0f), std::max(100.0f, camera.distance * 4.0f));
                 const glm::mat4 view = camera.GetViewMatrix();
                 bool overGizmo = false;
-                if (auto* selected = scene.GetSelection(); selected && selected != &scene.root) {
+                if (auto* selected = scene.GetSelection(); selected && selected != &scene.root && selected->GetComponent<TransformComponent>()) {
                     ImGuizmo::SetOrthographic(false);
                     ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
                     ImGuizmo::SetRect(imageStart.x, imageStart.y, size.x, size.y);
@@ -399,14 +423,14 @@ void Editor::CleanUp() {
 void Editor::DeleteDialog(Scene& scene) {
     if (deleteRequest) {
         if (deleteRequest != &scene.root) {
-            if (deleteRequest->children.empty()) scene.DeleteObject(deleteRequest);
+            if (deleteRequest->GetChildren().empty()) scene.DeleteObject(deleteRequest);
             else { deleteTarget = deleteRequest; ImGui::OpenPopup("Delete object?"); }
         }
         deleteRequest = nullptr;
     }
     if (ImGui::BeginPopupModal("Delete object?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         if (deleteTarget) {
-            ImGui::Text("Delete '%s' and all its children?", deleteTarget->name.c_str());
+            ImGui::Text("Delete '%s' and all its children?", deleteTarget->GetName().c_str());
             ImGui::TextUnformatted("Only the scene instance is removed. Source files are kept.");
             if (ImGui::Button("Delete")) {
                 scene.DeleteObject(deleteTarget); deleteTarget = nullptr;

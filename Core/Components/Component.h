@@ -1,27 +1,15 @@
 #pragma once
 
-
 class GameObject;
 
-class Component 
-{
-
+class Component {
 public:
-	enum Type {
-		TRANSFORM,
-		MATERIAL,
-		MESH
-	};
-	bool active;
+    virtual ~Component() = default;
+    virtual void Update(float) {}
 
-	GameObject* owner = nullptr;
-	
-	Component() : active(false) {}
-	virtual ~Component() = default;
+protected:
+    GameObject* owner = nullptr;
 
-	virtual void Enable() {};
-	virtual void Disable() {};
-	virtual void Update(float dt) {};
-	
-
+private:
+    friend class GameObject;
 };

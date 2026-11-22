@@ -2,6 +2,11 @@
 #include "Engine.h"
 #include "Render.h"
 #include "Editor.h"
+#include "../Core/Components/TransformComponent.h"
+#include "../Core/Components/MeshComponent.h"
+#include "../Core/Components/TextureComponent.h"
+#include "../Core/TextureLoader.h"
+#include <IL/il.h>
 #include "Log.h"
 #include "../Core/ModelLoader.h"
 #include <functional>
@@ -27,7 +32,7 @@ bool Scene::Awake() {
     return editor->Init();
 }
 bool Scene::Start() {
-    root.name = "Scene";
+    root.SetName("Scene");
     if (!ImportModel(AssetPath("Assets/Models/BakerHouse.fbx"))) return false;
     auto* transform = selectedObject->GetComponent<TransformComponent>();
     // Convert the supplied Blender FBX presentation to the editor's Y-up, metre scale.
@@ -47,8 +52,7 @@ bool Scene::Start() {
     if (selectedObject->GetWorldBounds(low, high)) chair->position.y -= low.y;
     editor->camera.yaw = -135.0f;
     editor->camera.Focus(&root, true);
-    selectedObject = root.children.front().get();
-    game_objects.push_back(&root);
+    selectedObject = root.GetChildren().front().get();
     sceneGrid.Init(50, 1.0f);
     return true;
 }
@@ -76,9 +80,11 @@ void Scene::RenderScene(const glm::mat4& view, const glm::mat4& projection, floa
     glUseProgram(0);
 }
 bool Scene::CleanUp() {
-    LOG("Freeing scene and editor");
+    LOG("Freeing scene");
     selectedObject = nullptr;
-    game_objects.clear(); root.children.clear(); root.components.clear();
+    root.ClearChildren();
+    root.RemoveComponent<MeshComponent>();
+    root.RemoveComponent<TextureComponent>();
     sceneGrid.CleanUp();
     if (editor) { editor->CleanUp(); editor.reset(); }
     aiDetachAllLogStreams();
@@ -88,9 +94,7 @@ bool Scene::CleanUp() {
 bool Scene::ImportModel(const std::string& path) {
     auto model = ModelLoader::LoadFBX(path);
     if (!model) return false;
-    model->parent = &root;
-    selectedObject = model.get();
-    root.children.push_back(std::move(model));
+    selectedObject = &root.AdoptChild(std::move(model));
     return true;
 }
 
@@ -111,15 +115,16 @@ void Scene::HandleDrop(const char* path) {
         LOG("Select an object before dropping a texture.");
         return;
     }
-    std::vector<TextureComponent*> targets;
+    std::vector<GameObject*> targets;
     std::function<void(GameObject&)> collect = [&](GameObject& object) {
         auto* mesh = object.GetComponent<MeshComponent>();
         auto* texture = object.GetComponent<TextureComponent>();
-        if (texture && (&object == selectedObject || (mesh && !mesh->meshes.empty())))
-            targets.push_back(texture);
+        if ((texture && &object == selectedObject) || (mesh && !mesh->meshes.empty()))
+            targets.push_back(&object);
         for (const auto& child : object.GetChildren()) collect(*child);
     };
     collect(*selectedObject);
+    if (targets.empty()) targets.push_back(selectedObject);
     // Each component owns its texture. Prepare all replacements before changing the scene.
     std::vector<GLuint> replacements;
     for (size_t i = 0; i < targets.size(); ++i) {
@@ -131,8 +136,9 @@ void Scene::HandleDrop(const char* path) {
         replacements.push_back(id);
     }
     for (size_t i = 0; i < targets.size(); ++i) {
-        targets[i]->SetTexture(replacements[i], path);
-        targets[i]->showChecker = false;
+        auto* texture = targets[i]->AddComponent<TextureComponent>();
+        texture->SetTexture(replacements[i], path);
+        texture->SetChecker(false);
     }
     LOG("Texture applied to %zu components: %s", targets.size(), path);
 }
@@ -197,31 +203,27 @@ void Scene::CreatePrimitive(Primitive type) {
         }
     }
     mesh.SetupMesh();
-    auto* object = root.AddChild(name);
-    object->GetComponent<MeshComponent>()->meshes.push_back(std::move(mesh));
-    Select(object);
+    auto& object = root.AddChild(name);
+    object.AddComponent<TextureComponent>();
+    object.AddComponent<MeshComponent>()->meshes.push_back(std::move(mesh));
+    Select(&object);
     LOG("Created primitive: %s", name);
 }
 
 
 GameObject* Scene::GetModelRoot(GameObject* object) {
     if (!object || object == &root) return nullptr;
-    while (object->parent && object->parent != &root) object = object->parent;
+    while (object->GetParent() && object->GetParent() != &root) object = object->GetParent();
     return object;
 }
 
 bool Scene::DeleteObject(GameObject* object) {
-    if (!object || object == &root || !object->parent) return false;
-    auto& siblings = object->parent->children;
-    const auto found = std::find_if(siblings.begin(), siblings.end(),
-        [object](const auto& child) { return child.get() == object; });
-    if (found == siblings.end()) return false;
-    for (auto* selected = selectedObject; selected; selected = selected->parent) {
+    if (!object || object == &root || !object->GetParent()) return false;
+    for (auto* selected = selectedObject; selected; selected = selected->GetParent()) {
         if (selected == object) { selectedObject = nullptr; break; }
     }
-    LOG("Deleted scene object: %s", object->name.c_str());
-    siblings.erase(found);
-    return true;
+    LOG("Deleted scene object: %s", object->GetName().c_str());
+    return object->GetParent()->RemoveChild(*object);
 }
 
 GameObject* Scene::Raycast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance) {

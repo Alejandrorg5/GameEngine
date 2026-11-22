@@ -26,7 +26,6 @@ public:
     GameObject* GetSelection() const { return selectedObject; }
     void Select(GameObject* object) { selectedObject = object; }
     GameObject root;
-    std::vector<GameObject*> game_objects;
     bool showGrid = true, wireframe = false, depthTest = true;
     glm::vec3 background{0.12f, 0.13f, 0.15f};
 private:
