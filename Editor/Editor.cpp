@@ -71,7 +71,7 @@ bool Editor::Awake() {
     return true;
 }
 bool Editor::Start() {
-    camera.yaw = -135.0f;
+    camera.SetYaw(-135.0f);
     camera.Focus(&Engine::GetInstance().GetScene().Root(), true);
     return true;
 }
@@ -231,9 +231,9 @@ void Editor::Configuration(Scene& scene) {
         if (ImGui::Checkbox("Resizable", &resizable)) SDL_SetWindowResizable(window, resizable);
     }
     if (ImGui::CollapsingHeader("Input / Camera")) {
-        ImGui::DragFloat("Move speed", &camera.moveSpeed, 0.1f, 0.1f, 100.0f);
-        ImGui::DragFloat("Look sensitivity", &camera.sensitivity, 0.01f, 0.01f, 2.0f);
-        ImGui::DragFloat("Zoom speed", &camera.zoomSensitivity, 0.1f, 0.1f, 100.0f);
+        ImGui::DragFloat("Move speed", camera.GetMoveSpeed(), 0.1f, 0.1f, 100.0f);
+        ImGui::DragFloat("Look sensitivity", camera.GetSensitivity(), 0.01f, 0.01f, 2.0f);
+        ImGui::DragFloat("Zoom speed", camera.GetZoomSens(), 0.1f, 0.1f, 100.0f);
         ImGui::TextWrapped("RMB + WASD: move / look. Shift: double speed. Alt + LMB: orbit selection. Wheel: zoom. F: focus.");
     }
     if (ImGui::CollapsingHeader("Hardware / Memory / Libraries")) {
